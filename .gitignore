@@ -29,3 +29,10 @@ Thumbs.db
 
 # Vercel
 .vercel/
+
+# Local-only files
+pdf/
+supabase/
+GrantGuard_OpenCode_Prompts.md
+PROGRESS.md
+backend/scripts/
