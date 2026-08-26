@@ -1,6 +1,6 @@
 ﻿# GrantGuard AI — Session Progress & Handoff
 
-_Last updated: Aug 25 2026 (Day 12 DONE & verified, ready for Day 13)_
+_Last updated: Aug 25 2026 (Day 13 IN PROGRESS — config files created, deployment guide below)_
 _Read this file first — it restores full context of where the project stands._
 
 ---
@@ -41,15 +41,19 @@ prompts demanding real end-to-end tests get REAL tests (see Day 4 below for proo
 | 10 | Compliance flags | ✅ DONE & **e2e-verified 14/14** (flag/verify lifecycle, dashboard count, persists after confirm) |
 | 11 | Evidence drill-down | ✅ DONE & **e2e-verified 16/16** (excerpt + page visible in due-soon cards, flag cards, review screen; excerpt quality) |
 | 12 | Polish pass | ✅ DONE & **e2e-verified 24/24** (loading/error states, empty states, mobile responsiveness, focus-visible a11y) |
-| 12–14 | Polish, deployment (Render/Vercel), README/demo | pending |
+| 13 | Deployment (Render + Vercel) | ✅ IN PROGRESS — config files done, user deploys via browser |
+| 14 | Buffer + demo prep | pending |
 
 ## ⏭️ NEXT SESSION — resume here
 
-**Day 12 is DONE.** Day 13 is next — error handling & resilience. Start by:
+**Day 13 config files are DONE.** User needs to deploy via browser, then Day 14 is next:
 
-1. Read Day 13 prompt from `GrantGuard_OpenCode_Prompts.md`
-2. Review current state (see file map below)
-3. Build Day 8 — portfolio dashboard with grant list, status overview, due-soon alerts
+1. Deploy backend to Render (see deployment guide below)
+2. Deploy frontend to Vercel (see deployment guide below)
+3. Update env vars with production URLs
+4. Smoke-test live URLs
+5. Read Day 14 prompt from `GrantGuard_OpenCode_Prompts.md`
+6. Build README + demo prep
 
 ## What happened this session
 
@@ -142,6 +146,8 @@ prompts demanding real end-to-end tests get REAL tests (see Day 4 below for proo
 
 ```
 GrantGuard_AI/
+├── .gitignore                           # root gitignore (node_modules, .env, dist, logs)
+├── render.yaml                          # Render Blueprint for backend
 ├── GrantGuard_OpenCode_Prompts.md       # ← all 14 day prompts (source of truth)
 ├── PROGRESS.md                          # this file
 ├── pdf/                                 # 3 realistic sample grant agreements (tests)
@@ -151,6 +157,7 @@ GrantGuard_AI/
 ├── frontend/
 │   ├── .env                             # REAL keys + VITE_API_URL (gitignored)
 │   ├── .env.example                     # VITE_SUPABASE_URL/_ANON_KEY, VITE_API_URL
+│   ├── vercel.json                      # SPA rewrite rules for React Router
 │   └── src/{lib/supabase.js, context/AuthContext.jsx, components/ProtectedRoute.jsx,
 │            pages/{Login,SignUp,Dashboard,ReviewScreen}.jsx,  # Dashboard = portfolio + upload CTA, ReviewScreen = review/confirm
 │            auth.css}                           # obligation + review + dashboard styles
@@ -288,3 +295,95 @@ cd backend && node scripts/day12.e2e.mjs # polish pass (loading/error/a11y/mobil
 - **Day 12 e2e test:** `backend/scripts/day12.e2e.mjs` — empty state, upload,
   dashboard data completeness, error handling (401/404/400), UI data integrity
   (all fields present), confirm flow, multi-grant stats variety. 24/24 passed.
+
+### This session (Aug 26 — Day 13 deployment prep):
+1. Created root `.gitignore` — excludes node_modules, .env, dist, logs, .qodo
+2. Created `frontend/vercel.json` — SPA rewrite rules for React Router
+3. Created `render.yaml` — Render Blueprint for backend service
+4. Verified frontend build passes clean (vite build → 456 kB JS + 16 kB CSS)
+5. Made initial git commit (56 files, a5b37f2)
+6. Wrote deployment guide below
+
+## Day 13 — Deployment Guide
+
+### Step 1: Create GitHub repo & push
+
+```bash
+# Create a new repo on github.com called "grantguard-ai", then:
+cd C:\grace\FULL STACK\WEBPAGES\active-projetcs\GrantGuard_AI
+git remote add origin https://github.com/YOUR_USERNAME/grantguard-ai.git
+git push -u origin master
+```
+
+### Step 2: Deploy backend to Render
+
+1. Go to [render.com](https://render.com) → sign up / log in
+2. **New +** → **Web Service**
+3. Connect your GitHub repo (`grantguard-ai`)
+4. Settings:
+   - **Name:** `grantguard-backend`
+   - **Region:** Oregon (or closest to you)
+   - **Root Directory:** `backend`
+   - **Runtime:** Node
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+5. **Environment Variables** (copy from your local `backend/.env`):
+   ```
+   NODE_ENV=production
+   SUPABASE_URL=https://bqqppkrigiswjrjnpnol.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=(copy from local backend/.env)
+   OPENROUTER_API_KEY=(copy from local backend/.env)
+   MODEL=openai/gpt-4o-mini
+   CORS_ORIGIN=(set AFTER frontend is deployed — see Step 4)
+   ```
+6. Click **Create Web Service** → wait for first deploy to succeed
+7. Note your backend URL: `https://grantguard-backend.onrender.com`
+8. Test: visit `https://grantguard-backend.onrender.com/health` → should return `{"status":"ok",...}`
+
+### Step 3: Deploy frontend to Vercel
+
+1. Go to [vercel.com](https://vercel.com) → sign up / log in (GitHub login easiest)
+2. **Add New Project** → Import your GitHub repo (`grantguard-ai`)
+3. Settings:
+   - **Framework Preset:** Vite
+   - **Root Directory:** `frontend`
+   - **Build Command:** `npm run build` (auto-detected)
+   - **Output Directory:** `dist` (auto-detected)
+4. **Environment Variables**:
+   ```
+   VITE_SUPABASE_URL=https://bqqppkrigiswjrjnpnol.supabase.co
+   VITE_SUPABASE_ANON_KEY=(copy from local frontend/.env)
+   VITE_API_URL=https://grantguard-backend.onrender.com
+   ```
+5. Click **Deploy** → wait for first deploy to succeed
+6. Note your frontend URL: `https://grantguard-ai.vercel.app` (or similar)
+
+### Step 4: Update CORS + Supabase settings
+
+1. Go to Render → backend service → Environment tab → edit `CORS_ORIGIN`:
+   ```
+   CORS_ORIGIN=https://grantguard-ai.vercel.app
+   ```
+   → Save → service auto-redeploys
+
+2. Go to Supabase Dashboard → your project → Authentication → URL Configuration:
+   - Add `https://grantguard-ai.vercel.app` to **Redirect URLs**
+   - Add `https://grantguard-ai.vercel.app` to **Site URL** (optional)
+
+### Step 5: Smoke-test the live app
+
+1. Open `https://grantguard-ai.vercel.app` → should show login page
+2. Sign up with a test email → confirm account (if email confirmations enabled)
+3. Log in → dashboard (empty state)
+4. Click "Upload agreement" → upload `Sample_Grant_3_KosuaTrust_SmallGrant.pdf` (smallest, 1 page)
+5. Wait for extraction (~10-15s) → review screen with obligations
+6. Edit one obligation → confirm
+7. Back to dashboard → stats, grant list, due-soon/flags sections
+
+### Step 6: Troubleshooting
+
+- **CORS error in browser console:** `CORS_ORIGIN` on Render doesn't match the actual Vercel URL. Double-check the exact URL.
+- **Supabase auth fails:** Redirect URLs not added in Supabase dashboard. Check Authentication → URL Configuration.
+- **Upload hangs:** Render free tier has 50s timeout. LLM extraction takes 10-15s. If it times out, check Render logs.
+- **Cold start delay:** Render free tier spins down after 15 min inactivity. First request after idle takes ~30-60s. This is expected on free tier.
+- **Vercel 404 on refresh:** `vercel.json` SPA rewrite should handle this. If not, verify the file is in `frontend/` root.
