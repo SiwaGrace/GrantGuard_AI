@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+dev.log
+dev.err.log
+server.log
+server.err.log
+
+# Build output
+dist/
+dist-ssr/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.early.coverage/
+.qodo/
+
+# Vercel
+.vercel/

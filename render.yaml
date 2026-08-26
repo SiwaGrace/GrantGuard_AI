@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: grantguard-backend
+    runtime: node
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: MODEL
+        value: openai/gpt-4o-mini
+      - key: CORS_ORIGIN
+        sync: false
