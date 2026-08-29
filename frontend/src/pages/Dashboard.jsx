@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-
-const API_URL = import.meta.env.VITE_API_URL
+import API_URL from '../lib/api'
 
 const DUE_SOON_DAYS = 14
 
@@ -30,11 +29,65 @@ export default function Dashboard() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [loadError, setLoadError] = useState('')
+  const [deletingId, setDeletingId] = useState(null)
+  const [retryingId, setRetryingId] = useState(null)
 
   async function handleSignOut() {
     setSigningOut(true)
     await signOut()
     navigate('/login', { replace: true })
+  }
+
+  async function handleDeleteGrant(e, grantId) {
+    e.stopPropagation()
+    if (!window.confirm('Delete this grant and all its obligations? This cannot be undone.')) return
+    setDeletingId(grantId)
+    try {
+      const { data: authData } = await supabase.auth.getSession()
+      const token = authData.session?.access_token
+      const res = await fetch(`${API_URL}/api/grants/${grantId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const payload = await res.json()
+        throw new Error(payload.error || 'Delete failed')
+      }
+      setGrants((prev) => prev.filter((g) => g.id !== grantId))
+    } catch (err) {
+      setLoadError(err.message)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function handleRetryExtraction(e, grantId) {
+    e.stopPropagation()
+    setRetryingId(grantId)
+    try {
+      const { data: authData } = await supabase.auth.getSession()
+      const token = authData.session?.access_token
+      const res = await fetch(`${API_URL}/api/grants/${grantId}/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Retry failed')
+
+      if (payload.obligationError) {
+        setLoadError(`Retry failed: ${payload.obligationError}`)
+        return
+      }
+      if (payload.extraction?.status !== 'extracted') {
+        setLoadError('Still cannot extract text from this PDF. It may be a scanned/image document.')
+        return
+      }
+      navigate(`/grants/${grantId}/review`)
+    } catch (err) {
+      setLoadError(err.message)
+    } finally {
+      setRetryingId(null)
+    }
   }
 
   useEffect(() => {
@@ -183,6 +236,24 @@ export default function Dashboard() {
 
       if (!response.ok) {
         throw new Error(payload.error || `Upload failed (${response.status})`)
+      }
+
+      if (payload.obligationError) {
+        setUploadError(`Upload succeeded but extraction had issues: ${payload.obligationError}`)
+        return
+      }
+
+      if (payload.extraction?.status !== 'extracted') {
+        const reason = payload.extraction?.error
+          ? `PDF could not be parsed: ${payload.extraction.error}`
+          : 'PDF text extraction failed. The file may be a scanned/image PDF.'
+        setUploadError(reason)
+        return
+      }
+
+      if (payload.obligations && payload.obligations.length === 0) {
+        setUploadError('The AI analyzed the document but found no obligations. The PDF may not contain grant agreement text.')
+        return
       }
 
       navigate(`/grants/${payload.grant.id}/review`, {
@@ -408,32 +479,54 @@ export default function Dashboard() {
                 <h2>Your grants</h2>
                 <div className="grant-list">
                   {grants.map((g) => (
-                    <button
+                    <div
                       key={g.id}
-                      className="grant-card"
-                      onClick={() =>
-                        navigate(`/grants/${g.id}/review`, {
-                          state: { grantName: g.name },
-                        })
-                      }
+                      className="grant-card-wrapper"
                     >
-                      <div className="grant-card-header">
-                        <h3 className="grant-card-name">{g.name}</h3>
-                        <span className={`grant-badge grant-badge-${statusBadge(g, g.docStatus, g.pendingCount).replace(/\s/g, '-')}`}>
-                          {statusBadge(g, g.docStatus, g.pendingCount)}
-                        </span>
-                      </div>
-                      <p className="grant-card-funder">{g.funder_name}</p>
-                      <div className="grant-card-meta">
-                        <span>{g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}</span>
-                        {g.pendingCount > 0 && (
-                          <span className="grant-card-pending">{g.pendingCount} pending</span>
+                      <button
+                        className="grant-card"
+                        onClick={() =>
+                          navigate(`/grants/${g.id}/review`, {
+                            state: { grantName: g.name },
+                          })
+                        }
+                      >
+                        <div className="grant-card-header">
+                          <h3 className="grant-card-name">{g.name}</h3>
+                          <span className={`grant-badge grant-badge-${statusBadge(g, g.docStatus, g.pendingCount).replace(/\s/g, '-')}`}>
+                            {statusBadge(g, g.docStatus, g.pendingCount)}
+                          </span>
+                        </div>
+                        <p className="grant-card-funder">{g.funder_name}</p>
+                        <div className="grant-card-meta">
+                          <span>{g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}</span>
+                          {g.pendingCount > 0 && (
+                            <span className="grant-card-pending">{g.pendingCount} pending</span>
+                          )}
+                          <span className="grant-card-date">
+                            Created {new Date(g.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </button>
+                      <div className="grant-card-actions">
+                        {g.docStatus === 'failed' && (
+                          <button
+                            className="grant-action-btn grant-retry-btn"
+                            disabled={retryingId === g.id}
+                            onClick={(e) => handleRetryExtraction(e, g.id)}
+                          >
+                            {retryingId === g.id ? 'Retrying…' : 'Retry extraction'}
+                          </button>
                         )}
-                        <span className="grant-card-date">
-                          Created {new Date(g.created_at).toLocaleDateString()}
-                        </span>
+                        <button
+                          className="grant-action-btn grant-delete-btn"
+                          disabled={deletingId === g.id}
+                          onClick={(e) => handleDeleteGrant(e, g.id)}
+                        >
+                          {deletingId === g.id ? 'Deleting…' : 'Delete'}
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </section>

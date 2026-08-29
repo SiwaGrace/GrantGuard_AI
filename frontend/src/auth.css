@@ -1147,3 +1147,54 @@
     border-inline: 1px solid var(--border);
   }
 }
+
+/* ── Grant card delete / retry actions ─────────────────────────── */
+
+.grant-card-wrapper {
+  position: relative;
+}
+
+.grant-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+}
+
+.grant-action-btn {
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.grant-delete-btn {
+  color: var(--danger, #dc3545);
+  background: rgba(220, 53, 69, 0.08);
+}
+
+.grant-delete-btn:hover {
+  background: rgba(220, 53, 69, 0.18);
+}
+
+.grant-retry-btn {
+  color: var(--accent, #4f6ef7);
+  background: rgba(79, 110, 247, 0.08);
+}
+
+.grant-retry-btn:hover {
+  background: rgba(79, 110, 247, 0.18);
+}
+
+.grant-card-wrapper .grant-card {
+  border-radius: 12px 12px 0 0;
+}
+
+.grant-card-wrapper .grant-card-actions + .grant-card {
+  border-radius: 0;
+}

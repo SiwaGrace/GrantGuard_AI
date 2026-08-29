@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import multer from 'multer'
-import pdfParse from 'pdf-parse/lib/pdf-parse.js'
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
   supabaseAdmin,
   GRANT_DOCUMENTS_BUCKET,
@@ -27,6 +27,19 @@ function sanitizeFileName(name) {
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return base || 'grant.pdf'
+}
+
+async function extractPdfText(buffer) {
+  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise
+  const numPages = doc.numPages
+  const pageTexts = []
+  for (let i = 1; i <= numPages; i++) {
+    const page = await doc.getPage(i)
+    const content = await page.getTextContent()
+    const strings = content.items.map((item) => item.str)
+    pageTexts.push(strings.join(' '))
+  }
+  return { numPages, text: pageTexts.join('\n\n') }
 }
 
 function friendlyUploadError(err) {
@@ -75,15 +88,16 @@ async function createGrant(req, res) {
   }
 
   let extractionStatus = 'failed'
+  let extractionError = null
   let pages = null
   let characters = null
   let preview = ''
   let extractedText = ''
 
   try {
-    const parsed = await pdfParse(file.buffer)
+    const parsed = await extractPdfText(file.buffer)
     extractedText = parsed.text
-    pages = parsed.numpages
+    pages = parsed.numPages
     characters = parsed.text.length
     preview = parsed.text.replace(/\s+/g, ' ').trim().slice(0, 500)
 
@@ -103,6 +117,10 @@ async function createGrant(req, res) {
     extractionStatus = 'extracted'
   } catch (parseError) {
     console.error('PDF extraction failed:', parseError.message)
+    extractionError =
+      parseError && parseError.message
+        ? String(parseError.message)
+        : 'Unknown PDF parsing error'
   }
 
   const { data: document, error: documentError } = await supabaseAdmin
@@ -127,10 +145,12 @@ async function createGrant(req, res) {
   let obligationError = null
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
+    console.log(`[extract] Sending ${extractedText.length} chars to LLM for grant "${name}"`)
     try {
       obligations = await extractObligations(extractedText)
+      console.log(`[extract] LLM returned ${obligations.length} obligations`)
     } catch (llmError) {
-      console.error('LLM extraction failed:', llmError.message)
+      console.error('[extract] LLM extraction failed:', llmError.message)
       obligationError = llmError.message
     }
 
@@ -164,7 +184,7 @@ async function createGrant(req, res) {
   res.status(201).json({
     grant,
     document,
-    extraction: { status: extractionStatus, pages, characters, preview },
+    extraction: { status: extractionStatus, pages, characters, preview, error: extractionError },
     obligations,
     obligationError,
   })
@@ -254,6 +274,149 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
   }
 
   res.json({ obligation: updated })
+})
+
+// ── Delete a grant and its documents/obligations ──────────────────
+router.delete('/grants/:id', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('id')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  await supabaseAdmin.from('obligations').delete().eq('grant_id', grantId)
+  await supabaseAdmin.from('documents').delete().eq('grant_id', grantId)
+
+  const { data: docs } = await supabaseAdmin
+    .from('documents')
+    .select('file_path')
+    .eq('grant_id', grantId)
+
+  if (docs && docs.length > 0) {
+    const paths = docs.map((d) => d.file_path)
+    await supabaseAdmin.storage.from(GRANT_DOCUMENTS_BUCKET).remove(paths)
+  }
+
+  await supabaseAdmin.from('grants').delete().eq('id', grantId)
+
+  res.json({ deleted: true })
+})
+
+// ── Retry extraction for a failed grant ──────────────────────────
+router.post('/grants/:id/retry', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('id')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  const { data: docs } = await supabaseAdmin
+    .from('documents')
+    .select('*')
+    .eq('grant_id', grantId)
+    .order('uploaded_at', { ascending: false })
+    .limit(1)
+
+  if (!docs || docs.length === 0) {
+    return res.status(404).json({ error: 'No document found for this grant' })
+  }
+
+  const doc = docs[0]
+
+  const { data: fileData, error: downloadErr } = await supabaseAdmin.storage
+    .from(GRANT_DOCUMENTS_BUCKET)
+    .download(doc.file_path)
+
+  if (downloadErr) {
+    return res.status(500).json({ error: `Could not download PDF: ${downloadErr.message}` })
+  }
+
+  const buffer = Buffer.from(await fileData.arrayBuffer())
+  let extractedText = ''
+  let extractionStatus = 'failed'
+  let pages = null
+  let characters = null
+
+  try {
+    const parsed = await extractPdfText(buffer)
+    extractedText = parsed.text
+    pages = parsed.numPages
+    characters = parsed.text.length
+    const trimmedText = extractedText.replace(/\s+/g, '').trim()
+    if (trimmedText.length < 50) {
+      return res.status(422).json({ error: 'PDF contains too little extractable text (possible scanned/image PDF)', characters: trimmedText.length })
+    }
+    extractionStatus = 'extracted'
+  } catch (parseError) {
+    console.error('[retry] PDF extraction failed:', parseError.message)
+    return res.status(500).json({ error: `PDF parsing failed: ${parseError.message}` })
+  }
+
+  await supabaseAdmin
+    .from('documents')
+    .update({ extraction_status: extractionStatus })
+    .eq('id', doc.id)
+
+  let obligations = []
+  let obligationError = null
+
+  if (extractionStatus === 'extracted' && extractedText.length > 0) {
+    console.log(`[retry] Sending ${extractedText.length} chars to LLM for grant "${grantId}"`)
+    try {
+      obligations = await extractObligations(extractedText)
+      console.log(`[retry] LLM returned ${obligations.length} obligations`)
+    } catch (llmError) {
+      console.error('[retry] LLM extraction failed:', llmError.message)
+      obligationError = llmError.message
+    }
+
+    if (obligations.length > 0) {
+      const obligationRows = obligations.map((o) => ({
+        grant_id: grant.id,
+        type: o.type,
+        description: o.description,
+        due_date: o.due_date || null,
+        source_page: o.source_page,
+        source_excerpt: o.source_excerpt,
+        confidence: o.confidence,
+        status: 'pending_review',
+      }))
+
+      const { data: inserted, error: insertError } = await supabaseAdmin
+        .from('obligations')
+        .insert(obligationRows)
+        .select()
+
+      if (insertError) {
+        console.error('[retry] Failed to insert obligations:', insertError.message)
+        obligationError = `Obligations extracted but save failed: ${insertError.message}`
+      } else if (inserted) {
+        obligations = inserted
+      }
+    }
+  }
+
+  res.json({
+    extraction: { status: extractionStatus, pages, characters },
+    obligations,
+    obligationError,
+  })
 })
 
 // ── Confirm all pending_review obligations for a grant ────────────
