@@ -1182,6 +1182,15 @@
   background: rgba(220, 53, 69, 0.18);
 }
 
+.grant-delete-btn.confirm {
+  color: #fff;
+  background: var(--danger, #dc3545);
+}
+
+.grant-delete-btn.confirm:hover {
+  background: var(--danger, #dc3545);
+}
+
 .grant-retry-btn {
   color: var(--accent, #4f6ef7);
   background: rgba(79, 110, 247, 0.08);

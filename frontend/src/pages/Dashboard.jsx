@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import API_URL from '../lib/api'
@@ -16,6 +17,7 @@ function statusBadge(grant, docStatus, pendingCount) {
 export default function Dashboard() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [signingOut, setSigningOut] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -27,9 +29,8 @@ export default function Dashboard() {
   const [showUpload, setShowUpload] = useState(false)
   const formRef = useRef(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-  const [loadError, setLoadError] = useState('')
   const [deletingId, setDeletingId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
 
   async function handleSignOut() {
@@ -40,7 +41,11 @@ export default function Dashboard() {
 
   async function handleDeleteGrant(e, grantId) {
     e.stopPropagation()
-    if (!window.confirm('Delete this grant and all its obligations? This cannot be undone.')) return
+    if (confirmDeleteId !== grantId) {
+      setConfirmDeleteId(grantId)
+      return
+    }
+    setConfirmDeleteId(null)
     setDeletingId(grantId)
     try {
       const { data: authData } = await supabase.auth.getSession()
@@ -53,9 +58,10 @@ export default function Dashboard() {
         const payload = await res.json()
         throw new Error(payload.error || 'Delete failed')
       }
-      setGrants((prev) => prev.filter((g) => g.id !== grantId))
+      toast.success('Grant deleted')
+      await loadData()
     } catch (err) {
-      setLoadError(err.message)
+      toast.error(err.message || 'Could not delete the grant.')
     } finally {
       setDeletingId(null)
     }
@@ -75,138 +81,134 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(payload.error || 'Retry failed')
 
       if (payload.obligationError) {
-        setLoadError(`Retry failed: ${payload.obligationError}`)
+        toast.error(`Retry failed: ${payload.obligationError}`)
         return
       }
       if (payload.extraction?.status !== 'extracted') {
-        setLoadError('Still cannot extract text from this PDF. It may be a scanned/image document.')
+        toast.error('Still cannot extract text from this PDF. It may be a scanned/image document.')
         return
       }
       navigate(`/grants/${grantId}/review`)
     } catch (err) {
-      setLoadError(err.message)
+      toast.error(err.message || 'Retry failed')
     } finally {
       setRetryingId(null)
     }
   }
+
+  const loadData = useCallback(async () => {
+    if (!user) return
+
+    const { data: authData } = await supabase.auth.getSession()
+    const token = authData.session?.access_token
+    if (!token) return
+
+    // Fetch grants
+    const { data: grantsData } = await supabase
+      .from('grants')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    const grantList = grantsData || []
+
+    // Fetch all obligations for this user's grants
+    let allObligations = []
+    let allDocs = []
+    if (grantList.length > 0) {
+      const grantIds = grantList.map((g) => g.id)
+
+      const { data: obligationsData } = await supabase
+        .from('obligations')
+        .select('*')
+        .in('grant_id', grantIds)
+
+      allObligations = obligationsData || []
+
+      const { data: docsData } = await supabase
+        .from('documents')
+        .select('*')
+        .in('grant_id', grantIds)
+
+      allDocs = docsData || []
+    }
+
+    // Compute stats
+    const now = new Date()
+    const dueSoonDeadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
+
+    const dueSoonItems = allObligations.filter((o) => {
+      if (!o.due_date) return false
+      const d = new Date(o.due_date)
+      return d >= now && d <= dueSoonDeadline
+    })
+
+    const lowConf = allObligations.filter(
+      (o) => o.confidence === 'low' && !o.verified
+    ).length
+
+    // Build compliance flag list (low-confidence, not yet verified)
+    const flagItems = allObligations
+      .filter((o) => o.confidence === 'low' && !o.verified)
+      .map((o) => {
+        const grant = grantList.find((g) => g.id === o.grant_id)
+        return { ...o, grantName: grant?.name || 'Unknown grant' }
+      })
+
+    setStats({
+      total: grantList.length,
+      obligations: allObligations.length,
+      dueSoon: dueSoonItems.length,
+      lowConf,
+    })
+
+    // Build due-soon list with grant names, sorted by closest due date
+    const dueSoonList = dueSoonItems
+      .map((o) => {
+        const grant = grantList.find((g) => g.id === o.grant_id)
+        const daysLeft = Math.ceil((new Date(o.due_date) - now) / (1000 * 60 * 60 * 24))
+        return { ...o, grantName: grant?.name || 'Unknown grant', daysLeft }
+      })
+      .sort((a, b) => a.daysLeft - b.daysLeft)
+
+    // Enrich grants with doc status + pending obligation count
+    const enriched = grantList.map((g) => {
+      const docs = allDocs.filter((d) => d.grant_id === g.id)
+      const latestDoc = docs.sort(
+        (a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)
+      )[0]
+      const pending = allObligations.filter(
+        (o) => o.grant_id === g.id && o.status === 'pending_review'
+      ).length
+
+      return {
+        ...g,
+        docStatus: latestDoc?.extraction_status || 'pending',
+        pendingCount: pending,
+        obligationCount: allObligations.filter((o) => o.grant_id === g.id).length,
+      }
+    })
+
+    setGrants(enriched)
+    setDueSoonList(dueSoonList)
+    setFlagList(flagItems)
+  }, [user])
 
   useEffect(() => {
     if (!user) return
     let active = true
 
     async function load() {
-      try {
-        const { data: authData } = await supabase.auth.getSession()
-        const token = authData.session?.access_token
-        if (!token || !active) return
-
-        // Fetch grants
-        const { data: grantsData } = await supabase
-          .from('grants')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-
-        if (!active) return
-        const grantList = grantsData || []
-
-        // Fetch all obligations for this user's grants
-        let allObligations = []
-        let allDocs = []
-        if (grantList.length > 0) {
-          const grantIds = grantList.map((g) => g.id)
-
-          const { data: obligationsData } = await supabase
-            .from('obligations')
-            .select('*')
-            .in('grant_id', grantIds)
-
-          allObligations = obligationsData || []
-
-          const { data: docsData } = await supabase
-            .from('documents')
-            .select('*')
-            .in('grant_id', grantIds)
-
-          allDocs = docsData || []
-        }
-
-        if (!active) return
-
-        // Compute stats
-        const now = new Date()
-        const dueSoonDeadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
-
-        const dueSoonItems = allObligations.filter((o) => {
-          if (!o.due_date) return false
-          const d = new Date(o.due_date)
-          return d >= now && d <= dueSoonDeadline
-        })
-
-        const lowConf = allObligations.filter(
-          (o) => o.confidence === 'low' && !o.verified
-        ).length
-
-        // Build compliance flag list (low-confidence, not yet verified)
-        const flagItems = allObligations
-          .filter((o) => o.confidence === 'low' && !o.verified)
-          .map((o) => {
-            const grant = grantList.find((g) => g.id === o.grant_id)
-            return { ...o, grantName: grant?.name || 'Unknown grant' }
-          })
-
-        setStats({
-          total: grantList.length,
-          obligations: allObligations.length,
-          dueSoon: dueSoonItems.length,
-          lowConf,
-        })
-
-        // Build due-soon list with grant names, sorted by closest due date
-        const dueSoonList = dueSoonItems
-          .map((o) => {
-            const grant = grantList.find((g) => g.id === o.grant_id)
-            const daysLeft = Math.ceil((new Date(o.due_date) - now) / (1000 * 60 * 60 * 24))
-            return { ...o, grantName: grant?.name || 'Unknown grant', daysLeft }
-          })
-          .sort((a, b) => a.daysLeft - b.daysLeft)
-
-        // Enrich grants with doc status + pending obligation count
-        const enriched = grantList.map((g) => {
-          const docs = allDocs.filter((d) => d.grant_id === g.id)
-          const latestDoc = docs.sort(
-            (a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)
-          )[0]
-          const pending = allObligations.filter(
-            (o) => o.grant_id === g.id && o.status === 'pending_review'
-          ).length
-
-          return {
-            ...g,
-            docStatus: latestDoc?.extraction_status || 'pending',
-            pendingCount: pending,
-            obligationCount: allObligations.filter((o) => o.grant_id === g.id).length,
-          }
-        })
-
-        setGrants(enriched)
-        setDueSoonList(dueSoonList)
-        setFlagList(flagItems)
-      } catch (err) {
-        console.error('Dashboard load failed:', err)
-        if (active) setLoadError('Could not load your grants. Please try again later.')
-      } finally {
-        if (active) setLoading(false)
-      }
+      await loadData()
+      if (active) setLoading(false)
     }
 
     load()
     return () => { active = false }
-  }, [user])
+  }, [user, loadData, location.pathname])
 
   async function handleUpload(event) {
     event.preventDefault()
-    setUploadError('')
 
     const formData = new FormData(event.currentTarget)
     const name = formData.get('name').trim()
@@ -214,11 +216,11 @@ export default function Dashboard() {
     const file = formData.get('file')
 
     if (!name || !funderName) {
-      setUploadError('Grant name and funder are required.')
+      toast.error('Grant name and funder are required.')
       return
     }
     if (!file || file.size === 0) {
-      setUploadError('Choose a PDF to upload.')
+      toast.error('Choose a PDF to upload.')
       return
     }
 
@@ -239,7 +241,7 @@ export default function Dashboard() {
       }
 
       if (payload.obligationError) {
-        setUploadError(`Upload succeeded but extraction had issues: ${payload.obligationError}`)
+        toast.error(`Upload succeeded but extraction had issues: ${payload.obligationError}`)
         return
       }
 
@@ -247,20 +249,22 @@ export default function Dashboard() {
         const reason = payload.extraction?.error
           ? `PDF could not be parsed: ${payload.extraction.error}`
           : 'PDF text extraction failed. The file may be a scanned/image PDF.'
-        setUploadError(reason)
+        toast.error(reason)
         return
       }
 
       if (payload.obligations && payload.obligations.length === 0) {
-        setUploadError('The AI analyzed the document but found no obligations. The PDF may not contain grant agreement text.')
+        toast.error('The AI analyzed the document but found no obligations. The PDF may not contain grant agreement text.')
         return
       }
 
+      formRef.current?.reset()
+      toast.success('Grant uploaded and analyzed')
       navigate(`/grants/${payload.grant.id}/review`, {
         state: { grantName: payload.grant.name },
       })
     } catch (err) {
-      setUploadError(err.message)
+      toast.error(err.message || 'Upload failed')
     } finally {
       setUploading(false)
     }
@@ -324,9 +328,6 @@ export default function Dashboard() {
                   <label htmlFor="grant-file">Agreement PDF (max 15 MB)</label>
                   <input id="grant-file" name="file" type="file" accept="application/pdf" />
                 </div>
-                {uploadError && (
-                  <p role="alert" className="auth-alert auth-alert-error">{uploadError}</p>
-                )}
                 <button type="submit" className="auth-button" disabled={uploading}>
                   {uploading ? 'Uploading & extracting…' : 'Upload & extract'}
                 </button>
@@ -338,18 +339,6 @@ export default function Dashboard() {
             <div className="review-loading">
               <div className="review-spinner" />
               <p>Loading your grants…</p>
-            </div>
-          ) : loadError ? (
-            <div className="auth-card">
-              <div className="auth-alert auth-alert-error" role="alert">
-                {loadError}
-              </div>
-              <button
-                className="auth-button"
-                onClick={() => window.location.reload()}
-              >
-                Try again
-              </button>
             </div>
           ) : grants.length === 0 ? (
             <div className="dashboard-empty auth-card">
@@ -380,7 +369,7 @@ export default function Dashboard() {
                   <span className={`stat-value ${stats.dueSoon > 0 ? 'stat-attention' : ''}`}>
                     {stats.dueSoon}
                   </span>
-                  <span className="stat-label">Due soon (14 days)</span>
+                  <span className="stat-label">Due within 14 days</span>
                 </div>
                 <div className="stat-card">
                   <span className={`stat-value ${stats.lowConf > 0 ? 'stat-attention' : ''}`}>
@@ -519,11 +508,16 @@ export default function Dashboard() {
                           </button>
                         )}
                         <button
-                          className="grant-action-btn grant-delete-btn"
+                          className={`grant-action-btn grant-delete-btn${confirmDeleteId === g.id ? ' confirm' : ''}`}
                           disabled={deletingId === g.id}
                           onClick={(e) => handleDeleteGrant(e, g.id)}
+                          onBlur={() => setConfirmDeleteId((cur) => (cur === g.id ? null : cur))}
                         >
-                          {deletingId === g.id ? 'Deleting…' : 'Delete'}
+                          {deletingId === g.id
+                            ? 'Deleting…'
+                            : confirmDeleteId === g.id
+                              ? 'Confirm delete?'
+                              : 'Delete'}
                         </button>
                       </div>
                     </div>
