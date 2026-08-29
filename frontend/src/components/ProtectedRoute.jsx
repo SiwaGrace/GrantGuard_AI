@@ -6,8 +6,8 @@ export default function ProtectedRoute() {
 
   if (loading) {
     return (
-      <div className="auth-page">
-        <p className="auth-status">Loading…</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-outline-variant border-t-primary rounded-full animate-spin" />
       </div>
     )
   }

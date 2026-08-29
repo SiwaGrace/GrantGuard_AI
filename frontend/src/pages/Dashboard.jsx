@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import API_URL from '../lib/api'
+import AppShell from '../components/AppShell'
 
 const DUE_SOON_DAYS = 14
 
@@ -14,12 +15,18 @@ function statusBadge(grant, docStatus, pendingCount) {
   return 'on track'
 }
 
+const BADGE_STYLES = {
+  'on track': 'bg-success-bg text-success border-success-border',
+  'needs review': 'bg-error-container text-on-error-container border-error/20',
+  failed: 'bg-error-container text-on-error-container border-error/20',
+  processing: 'bg-surface-variant text-on-surface-variant border-outline-variant',
+}
+
 export default function Dashboard() {
-  const { user, signOut } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const [signingOut, setSigningOut] = useState(false)
   const [loading, setLoading] = useState(true)
   const [grants, setGrants] = useState([])
   const [stats, setStats] = useState({ total: 0, obligations: 0, dueSoon: 0, lowConf: 0 })
@@ -32,12 +39,6 @@ export default function Dashboard() {
   const [deletingId, setDeletingId] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
-
-  async function handleSignOut() {
-    setSigningOut(true)
-    await signOut()
-    navigate('/login', { replace: true })
-  }
 
   async function handleDeleteGrant(e, grantId) {
     e.stopPropagation()
@@ -103,7 +104,6 @@ export default function Dashboard() {
     const token = authData.session?.access_token
     if (!token) return
 
-    // Fetch grants
     const { data: grantsData } = await supabase
       .from('grants')
       .select('*')
@@ -112,7 +112,6 @@ export default function Dashboard() {
 
     const grantList = grantsData || []
 
-    // Fetch all obligations for this user's grants
     let allObligations = []
     let allDocs = []
     if (grantList.length > 0) {
@@ -133,7 +132,6 @@ export default function Dashboard() {
       allDocs = docsData || []
     }
 
-    // Compute stats
     const now = new Date()
     const dueSoonDeadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
 
@@ -147,7 +145,6 @@ export default function Dashboard() {
       (o) => o.confidence === 'low' && !o.verified
     ).length
 
-    // Build compliance flag list (low-confidence, not yet verified)
     const flagItems = allObligations
       .filter((o) => o.confidence === 'low' && !o.verified)
       .map((o) => {
@@ -162,7 +159,6 @@ export default function Dashboard() {
       lowConf,
     })
 
-    // Build due-soon list with grant names, sorted by closest due date
     const dueSoonList = dueSoonItems
       .map((o) => {
         const grant = grantList.find((g) => g.id === o.grant_id)
@@ -171,7 +167,6 @@ export default function Dashboard() {
       })
       .sort((a, b) => a.daysLeft - b.daysLeft)
 
-    // Enrich grants with doc status + pending obligation count
     const enriched = grantList.map((g) => {
       const docs = allDocs.filter((d) => d.grant_id === g.id)
       const latestDoc = docs.sort(
@@ -270,264 +265,316 @@ export default function Dashboard() {
     }
   }
 
-  return (
-    <div className="app-shell">
-      <header className="app-header">
-        <span className="app-brand">GrantGuard AI</span>
-        <div className="app-header-user">
-          <span className="app-user-email">{user?.email}</span>
-          <button
-            type="button"
-            className="auth-button auth-button-ghost"
-            onClick={handleSignOut}
-            disabled={signingOut}
-          >
-            {signingOut ? 'Logging out…' : 'Log out'}
-          </button>
-        </div>
-      </header>
+  const fileInput = (
+    <>
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="upload-name"
+          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
+        >
+          Grant name
+        </label>
+        <input
+          id="upload-name"
+          name="name"
+          type="text"
+          placeholder="e.g. WASH Access Programme 2026"
+          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="upload-funder"
+          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
+        >
+          Funder
+        </label>
+        <input
+          id="upload-funder"
+          name="funder_name"
+          type="text"
+          placeholder="e.g. GlobalDev Foundation"
+          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
+        />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="upload-file"
+          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
+        >
+          Agreement PDF (max 15 MB)
+        </label>
+        <input
+          id="upload-file"
+          name="file"
+          type="file"
+          accept="application/pdf"
+          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface file:mr-3 file:border-0 file:bg-surface-container file:px-3 file:h-full file:text-on-surface focus:outline-none focus:border-primary transition-colors"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={uploading}
+        className="self-start px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2 disabled:opacity-60"
+      >
+        <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
+        {uploading ? 'Uploading & extracting…' : 'Upload & extract'}
+      </button>
+    </>
+  )
 
-      <main className="app-main dashboard-main">
-        <div className="dashboard-container">
-          <div className="dashboard-top">
-            <div>
-              <h1>Dashboard</h1>
-              <p className="dashboard-subtitle">Signed in as <strong>{user?.email}</strong></p>
-            </div>
+  return (
+    <AppShell>
+      <div className="space-y-10">
+        {/* Page header */}
+        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant pb-6">
+          <div>
+            <h1 className="text-[32px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight text-primary">
+              Portfolio Overview
+            </h1>
+            <p className="text-body-lg text-on-surface-variant mt-2 max-w-2xl">
+              High-level metrics and active grant tracking across all your obligations.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className="shrink-0 px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {showUpload ? 'close' : 'add'}
+            </span>
+            {showUpload ? 'Cancel' : 'Upload agreement'}
+          </button>
+        </header>
+
+        {/* Upload form */}
+        {showUpload && (
+          <div className="border border-outline-variant bg-surface rounded-lg p-6">
+            <h2 className="text-headline-md text-primary mb-5">Upload a grant agreement</h2>
+            <form ref={formRef} onSubmit={handleUpload} className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
+              {fileInput}
+            </form>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-on-surface-variant">
+            <div className="w-8 h-8 border-2 border-outline-variant border-t-primary rounded-full animate-spin mb-3" />
+            <p className="text-body-md">Loading your grants…</p>
+          </div>
+        ) : grants.length === 0 ? (
+          <div className="border border-dashed border-outline-variant rounded-lg p-10 flex flex-col items-center justify-center text-center bg-surface">
+            <span className="material-symbols-outlined text-[48px] text-secondary mb-4">description</span>
+            <h2 className="text-headline-md text-primary mb-1">Welcome to GrantGuard AI</h2>
+            <p className="text-body-md text-on-surface-variant max-w-md">
+              You haven&apos;t uploaded any grant agreements yet. Upload your first one to track
+              obligations, deadlines, and compliance requirements.
+            </p>
             <button
-              className="auth-button dashboard-upload-btn"
-              onClick={() => setShowUpload(!showUpload)}
+              onClick={() => setShowUpload(true)}
+              className="mt-6 px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2"
             >
-              {showUpload ? 'Cancel' : '+ Upload agreement'}
+              <span className="material-symbols-outlined">upload_file</span>
+              Upload your first agreement
             </button>
           </div>
-
-          {showUpload && (
-            <div className="dashboard-upload-form auth-card">
-              <h2>Upload a grant agreement</h2>
-              <form ref={formRef} onSubmit={handleUpload} className="upload-form">
-                <div className="auth-field">
-                  <label htmlFor="grant-name">Grant name</label>
-                  <input
-                    id="grant-name"
-                    name="name"
-                    type="text"
-                    placeholder="e.g. WASH Access Programme 2026"
-                  />
-                </div>
-                <div className="auth-field">
-                  <label htmlFor="grant-funder">Funder</label>
-                  <input
-                    id="grant-funder"
-                    name="funder_name"
-                    type="text"
-                    placeholder="e.g. GlobalDev Foundation"
-                  />
-                </div>
-                <div className="auth-field">
-                  <label htmlFor="grant-file">Agreement PDF (max 15 MB)</label>
-                  <input id="grant-file" name="file" type="file" accept="application/pdf" />
-                </div>
-                <button type="submit" className="auth-button" disabled={uploading}>
-                  {uploading ? 'Uploading & extracting…' : 'Upload & extract'}
-                </button>
-              </form>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="review-loading">
-              <div className="review-spinner" />
-              <p>Loading your grants…</p>
-            </div>
-          ) : grants.length === 0 ? (
-            <div className="dashboard-empty auth-card">
-              <h2>Welcome to GrantGuard AI</h2>
-              <p>
-                You haven't uploaded any grant agreements yet. Upload your first one to
-                track obligations, deadlines, and compliance requirements.
-              </p>
-              <button
-                className="auth-button"
-                onClick={() => setShowUpload(true)}
-              >
-                Upload your first agreement
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="dashboard-stats">
-                <div className="stat-card">
-                  <span className="stat-value">{stats.total}</span>
-                  <span className="stat-label">Active grants</span>
-                </div>
-                <div className="stat-card">
-                  <span className="stat-value">{stats.obligations}</span>
-                  <span className="stat-label">Obligations tracked</span>
-                </div>
-                <div className="stat-card">
-                  <span className={`stat-value ${stats.dueSoon > 0 ? 'stat-attention' : ''}`}>
-                    {stats.dueSoon}
-                  </span>
-                  <span className="stat-label">Due within 14 days</span>
-                </div>
-                <div className="stat-card">
-                  <span className={`stat-value ${stats.lowConf > 0 ? 'stat-attention' : ''}`}>
-                    {stats.lowConf}
-                  </span>
-                  <span className="stat-label">Needs review</span>
-                </div>
+        ) : (
+          <>
+            {/* Metric row */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-surface-container-lowest border border-outline-variant p-6 rounded-lg flex flex-col hover:border-outline transition-colors">
+                <span className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase mb-3">
+                  Active Grants
+                </span>
+                <span className="text-display-web text-primary mt-auto">{stats.total}</span>
               </div>
+              <div className="bg-surface-container-lowest border border-outline-variant p-6 rounded-lg flex flex-col hover:border-outline transition-colors">
+                <span className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase mb-3">
+                  Obligations tracked
+                </span>
+                <span className="text-display-web text-primary mt-auto">{stats.obligations}</span>
+              </div>
+              <div
+                className={`border p-6 rounded-lg flex flex-col relative overflow-hidden hover:border-outline transition-colors ${
+                  stats.dueSoon > 0
+                    ? 'bg-error-container border-error/30'
+                    : 'bg-surface-container-lowest border-outline-variant'
+                }`}
+              >
+                <span
+                  className={`font-mono text-[12px] leading-4 uppercase mb-3 flex items-center gap-1.5 ${
+                    stats.dueSoon > 0 ? 'text-on-error-container' : 'text-on-surface-variant'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">schedule</span>
+                  Due within {DUE_SOON_DAYS} days
+                </span>
+                <span
+                  className={`text-display-web mt-auto ${
+                    stats.dueSoon > 0 ? 'text-on-error-container' : 'text-primary'
+                  }`}
+                >
+                  {stats.dueSoon}
+                </span>
+              </div>
+              <div
+                className={`border p-6 rounded-lg flex flex-col relative overflow-hidden hover:border-outline transition-colors ${
+                  stats.lowConf > 0
+                    ? 'bg-error-container border-error/30'
+                    : 'bg-surface-container-lowest border-outline-variant'
+                }`}
+              >
+                <span className={`font-mono text-[12px] leading-4 uppercase mb-3 flex items-center gap-1.5 ${stats.lowConf > 0 ? 'text-on-error-container' : 'text-on-surface-variant'}`}>
+                  <span className="material-symbols-outlined text-[16px]">warning</span>
+                  Needs review
+                </span>
+                <span className={`text-display-web mt-auto ${stats.lowConf > 0 ? 'text-on-error-container' : 'text-primary'}`}>
+                  {stats.lowConf}
+                </span>
+              </div>
+            </section>
 
-              {dueSoonList.length > 0 && (
-                <section className="dashboard-due-soon">
-                  <h2>Due soon</h2>
-                  <p className="dashboard-due-soon-subtitle">
-                    Obligations with due dates in the next {DUE_SOON_DAYS} days
-                  </p>
-                  <div className="due-soon-list">
-                    {dueSoonList.map((o) => (
-                      <button
-                        key={o.id}
-                        className="due-soon-card"
-                        onClick={() =>
-                          navigate(`/grants/${o.grant_id}/review`, {
-                            state: { grantName: o.grantName },
-                          })
-                        }
-                      >
-                        <div className="due-soon-card-top">
-                          <span className={`obligation-type type-${o.type}`}>
-                            {o.type.replace('_', ' ')}
-                          </span>
-                          <span className="due-soon-countdown">
-                            {o.daysLeft === 0 ? 'Today' : o.daysLeft === 1 ? 'Tomorrow' : `${o.daysLeft} days`}
-                          </span>
-                        </div>
-                        <p className="due-soon-description">{o.description}</p>
-                        {o.source_excerpt && (
-                          <blockquote className="dashboard-excerpt">
-                            &ldquo;{o.source_excerpt}&rdquo;
-                          </blockquote>
-                        )}
-                        <div className="due-soon-meta">
-                          <span className="due-soon-grant">{o.grantName}</span>
-                          <span className="due-soon-date">Due {o.due_date}</span>
-                          {o.source_page && <span className="dashboard-page">p.{o.source_page}</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {flagList.length > 0 && (
-                <section className="dashboard-flags">
-                  <h2>Compliance flags</h2>
-                  <p className="dashboard-flags-subtitle">
-                    These obligations have low extraction confidence and need your review
-                  </p>
-                  <div className="flag-list">
-                    {flagList.map((o) => (
-                      <button
-                        key={o.id}
-                        className="flag-card"
-                        onClick={() =>
-                          navigate(`/grants/${o.grant_id}/review`, {
-                            state: { grantName: o.grantName },
-                          })
-                        }
-                      >
-                        <div className="flag-card-top">
-                          <span className={`obligation-type type-${o.type}`}>
-                            {o.type.replace('_', ' ')}
-                          </span>
-                          <span className="flag-badge">needs verification</span>
-                        </div>
-                        <p className="flag-description">{o.description}</p>
-                        {o.source_excerpt && (
-                          <blockquote className="dashboard-excerpt">
-                            &ldquo;{o.source_excerpt}&rdquo;
-                          </blockquote>
-                        )}
-                        <p className="flag-explanation">
-                          Low extraction confidence — please verify against the source clause
-                        </p>
-                        <div className="flag-meta">
-                          <span className="flag-grant">{o.grantName}</span>
-                          {o.due_date && <span className="flag-due">Due {o.due_date}</span>}
-                          {o.source_page && <span className="dashboard-page">p.{o.source_page}</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <section className="dashboard-grants">
-                <h2>Your grants</h2>
-                <div className="grant-list">
-                  {grants.map((g) => (
-                    <div
-                      key={g.id}
-                      className="grant-card-wrapper"
+            {/* Due soon */}
+            {dueSoonList.length > 0 && (
+              <section>
+                <h2 className="text-headline-md text-primary mb-1">Due soon</h2>
+                <p className="text-body-md text-on-surface-variant mb-4">
+                  Obligations with due dates in the next {DUE_SOON_DAYS} days
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {dueSoonList.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() =>
+                        navigate(`/grants/${o.grant_id}/review`, {
+                          state: { grantName: o.grantName },
+                        })
+                      }
+                      className="text-left border border-outline-variant bg-surface rounded-lg p-4 hover:border-outline hover:bg-surface-container-lowest transition-colors"
                     >
-                      <button
-                        className="grant-card"
-                        onClick={() =>
-                          navigate(`/grants/${g.id}/review`, {
-                            state: { grantName: g.name },
-                          })
-                        }
-                      >
-                        <div className="grant-card-header">
-                          <h3 className="grant-card-name">{g.name}</h3>
-                          <span className={`grant-badge grant-badge-${statusBadge(g, g.docStatus, g.pendingCount).replace(/\s/g, '-')}`}>
-                            {statusBadge(g, g.docStatus, g.pendingCount)}
-                          </span>
-                        </div>
-                        <p className="grant-card-funder">{g.funder_name}</p>
-                        <div className="grant-card-meta">
-                          <span>{g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}</span>
-                          {g.pendingCount > 0 && (
-                            <span className="grant-card-pending">{g.pendingCount} pending</span>
-                          )}
-                          <span className="grant-card-date">
-                            Created {new Date(g.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </button>
-                      <div className="grant-card-actions">
-                        {g.docStatus === 'failed' && (
-                          <button
-                            className="grant-action-btn grant-retry-btn"
-                            disabled={retryingId === g.id}
-                            onClick={(e) => handleRetryExtraction(e, g.id)}
-                          >
-                            {retryingId === g.id ? 'Retrying…' : 'Retry extraction'}
-                          </button>
-                        )}
-                        <button
-                          className={`grant-action-btn grant-delete-btn${confirmDeleteId === g.id ? ' confirm' : ''}`}
-                          disabled={deletingId === g.id}
-                          onClick={(e) => handleDeleteGrant(e, g.id)}
-                          onBlur={() => setConfirmDeleteId((cur) => (cur === g.id ? null : cur))}
-                        >
-                          {deletingId === g.id
-                            ? 'Deleting…'
-                            : confirmDeleteId === g.id
-                              ? 'Confirm delete?'
-                              : 'Delete'}
-                        </button>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-mono text-[11px] uppercase tracking-wider text-on-surface-variant">{o.type.replace('_', ' ')}</span>
+                        <span className="font-mono text-[11px] text-error font-semibold">
+                          {o.daysLeft === 0 ? 'Today' : o.daysLeft === 1 ? 'Tomorrow' : `${o.daysLeft} days`}
+                        </span>
                       </div>
-                    </div>
+                      <p className="text-body-md font-medium text-primary mb-1">{o.description}</p>
+                      <p className="font-mono text-[12px] text-on-surface-variant">
+                        {o.grantName}
+                        {o.due_date && ` • Due ${o.due_date}`}
+                      </p>
+                    </button>
                   ))}
                 </div>
               </section>
-            </>
-          )}
-        </div>
-      </main>
-    </div>
+            )}
+
+            {/* Compliance flags */}
+            {flagList.length > 0 && (
+              <section>
+                <h2 className="text-headline-md text-primary mb-1">Compliance flags</h2>
+                <p className="text-body-md text-on-surface-variant mb-4">
+                  These obligations have low extraction confidence and need your review
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {flagList.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() =>
+                        navigate(`/grants/${o.grant_id}/review`, {
+                          state: { grantName: o.grantName },
+                        })
+                      }
+                      className="text-left border-l-2 border-error bg-error-container rounded-r-lg p-4 flex gap-3 hover:brightness-95 transition"
+                    >
+                      <span className="material-symbols-outlined text-on-error-container shrink-0">gavel</span>
+                      <div>
+                        <p className="text-body-md font-medium text-on-error-container mb-1">{o.description}</p>
+                        <p className="font-mono text-[12px] text-on-error-container/80">
+                          {o.grantName}
+                          {o.due_date && ` • Due ${o.due_date}`}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Grants list */}
+            <section>
+              <h2 className="text-headline-md text-primary mb-4">Your grants</h2>
+              <div className="border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest">
+                <div className="hidden md:flex px-4 py-3 bg-surface-container font-mono text-[12px] text-on-surface-variant uppercase tracking-wider border-b border-outline-variant">
+                  <span className="flex-1">Grant</span>
+                  <span className="w-40">Status</span>
+                  <span className="w-24 text-right">Actions</span>
+                </div>
+                <div className="divide-y divide-outline-variant">
+                  {grants.map((g) => {
+                    const badge = statusBadge(g, g.docStatus, g.pendingCount)
+                    return (
+                      <div key={g.id} className="flex flex-col md:flex-row md:items-center gap-3 px-4 py-4 hover:bg-surface-container-low transition-colors">
+                        <button
+                          onClick={() =>
+                            navigate(`/grants/${g.id}/review`, {
+                              state: { grantName: g.name },
+                            })
+                          }
+                          className="flex-1 text-left"
+                        >
+                          <div className="text-body-md font-medium text-primary">{g.name}</div>
+                          <div className="font-mono text-[12px] text-on-surface-variant mt-0.5">
+                            {g.funder_name} • {g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}
+                            {g.pendingCount > 0 ? ` • ${g.pendingCount} pending` : ''} •{' '}
+                            {new Date(g.created_at).toLocaleDateString()}
+                          </div>
+                        </button>
+                        <span
+                          className={`inline-flex items-center gap-1.5 w-fit md:w-40 px-2.5 py-1 rounded font-mono text-[11px] uppercase tracking-wider border ${BADGE_STYLES[badge] || BADGE_STYLES['processing']}`}
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            {badge === 'on track' ? 'check_circle' : badge === 'failed' ? 'error' : badge === 'needs review' ? 'warning' : 'schedule'}
+                          </span>
+                          {badge}
+                        </span>
+                        <div className="flex gap-2 md:w-24 md:justify-end">
+                          {g.docStatus === 'failed' && (
+                            <button
+                              className="px-3 py-1.5 border border-outline text-primary font-mono text-[12px] rounded hover:bg-surface-variant transition-colors"
+                              disabled={retryingId === g.id}
+                              onClick={(e) => handleRetryExtraction(e, g.id)}
+                            >
+                              {retryingId === g.id ? 'Retrying…' : 'Retry'}
+                            </button>
+                          )}
+                          <button
+                            className={`px-3 py-1.5 border font-mono text-[12px] rounded transition-colors ${
+                              confirmDeleteId === g.id
+                                ? 'bg-error text-on-error border-error'
+                                : 'border-outline text-on-surface hover:bg-surface-variant'
+                            }`}
+                            disabled={deletingId === g.id}
+                            onClick={(e) => handleDeleteGrant(e, g.id)}
+                            onBlur={() => setConfirmDeleteId((cur) => (cur === g.id ? null : cur))}
+                          >
+                            {deletingId === g.id
+                              ? 'Deleting…'
+                              : confirmDeleteId === g.id
+                                ? 'Confirm?'
+                                : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+    </AppShell>
   )
 }

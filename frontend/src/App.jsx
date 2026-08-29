@@ -5,7 +5,6 @@ import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import Dashboard from './pages/Dashboard'
 import ReviewScreen from './pages/ReviewScreen'
-import './auth.css'
 
 function App() {
   return (
