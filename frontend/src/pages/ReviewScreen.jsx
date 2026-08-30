@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import API_URL from '../lib/api'
 import AppShell from '../components/AppShell'
+import DocumentViewer from '../components/DocumentViewer'
 
 const DUE_SOON_DAYS = 14
 
@@ -23,10 +24,10 @@ const TYPE_LABELS = {
 }
 
 const TYPE_META = {
-  deadline: { icon: 'event', color: '#1c1b1b', bg: '#e5e2e1' },
-  reporting: { icon: 'summarize', color: '#1c1b1b', bg: '#e5e2e1' },
-  eligible_activity: { icon: 'checklist', color: '#1c1b1b', bg: '#e5e2e1' },
-  compliance_condition: { icon: 'gavel', color: '#93000a', bg: '#ffdad6' },
+  deadline: { icon: 'event', color: 'text-primary', bg: 'bg-primary-container' },
+  reporting: { icon: 'summarize', color: 'text-primary', bg: 'bg-primary-container' },
+  eligible_activity: { icon: 'checklist', color: 'text-warning-ochre', bg: 'bg-surface-container' },
+  compliance_condition: { icon: 'gavel', color: 'text-alert-crimson', bg: 'bg-error-container' },
 }
 
 export default function ReviewScreen() {
@@ -46,6 +47,9 @@ export default function ReviewScreen() {
   const [confirming, setConfirming] = useState(false)
   const [confirmed, setConfirmed] = useState(false)
   const [verifyingId, setVerifyingId] = useState(null)
+
+  const [detail, setDetail] = useState(null)
+  const [showDocument, setShowDocument] = useState(false)
 
   const headers = { Authorization: `Bearer ${session.access_token}` }
 
@@ -77,6 +81,19 @@ export default function ReviewScreen() {
     const state = window.history.state?.usr
     if (state?.grantName) setGrantName(state.grantName)
   }, [])
+
+  useEffect(() => {
+    if (!detail) return
+    function onKey(e) {
+      if (e.key === 'Escape') setDetail(null)
+    }
+    window.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [detail])
 
   function startEdit(o) {
     setEditingId(o.id)
@@ -191,14 +208,14 @@ export default function ReviewScreen() {
   if (error && obligations.length === 0) {
     return (
       <AppShell>
-        <div className="max-w-md mx-auto border border-outline-variant bg-surface rounded-lg p-6 text-center">
-          <span className="material-symbols-outlined text-[40px] text-error mb-3">error_outline</span>
+        <div className="max-w-md mx-auto bg-surface-container-lowest inkwell-border notched-card p-6 text-center">
+          <span className="material-symbols-outlined text-[40px] text-alert-crimson mb-3">error_outline</span>
           <p className="text-body-md text-on-surface mb-4">{error}</p>
           <button
             onClick={() => navigate('/')}
-            className="px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors"
+            className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br"
           >
-            Back to Dashboard
+            BACK TO PORTFOLIO
           </button>
         </div>
       </AppShell>
@@ -207,9 +224,9 @@ export default function ReviewScreen() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 font-mono text-[12px] leading-4 text-on-surface-variant">
+        <nav className="flex items-center gap-2 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
           <button onClick={() => navigate('/')} className="hover:text-primary transition-colors">
             Portfolio
           </button>
@@ -218,19 +235,21 @@ export default function ReviewScreen() {
         </nav>
 
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-outline-variant pb-6">
+        <header className="flex flex-col md:flex-row md:items-start justify-between gap-4 inkwell-border-b pb-6">
           <div>
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-[24px] sm:text-[32px] leading-[1.1] font-semibold tracking-tight text-primary">
-                Review Obligations
+              <h1 className="font-headline-lg text-headline-lg text-on-surface">
+                Obligation Review
               </h1>
               {needsReview && (
-                <span className="inline-flex items-center px-2.5 py-1 rounded border border-error bg-error-container text-on-error-container font-mono text-[11px] uppercase tracking-wider">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-error-container text-on-error-container border border-outline-variant font-label-caps text-label-caps uppercase">
+                  <span className="material-symbols-outlined text-[14px]">flag</span>
                   Needs Review
                 </span>
               )}
               {confirmed && !needsReview && (
-                <span className="inline-flex items-center px-2.5 py-1 rounded border border-success-border bg-success-bg text-success font-mono text-[11px] uppercase tracking-wider">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-container text-on-primary-container border border-outline-variant font-label-caps text-label-caps uppercase">
+                  <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
                   On Track
                 </span>
               )}
@@ -240,68 +259,74 @@ export default function ReviewScreen() {
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            <button
+              onClick={() => setShowDocument(true)}
+              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[16px]">visibility</span>
+              View Document
+            </button>
             {pendingCount > 0 && (
               <button
                 onClick={confirmAll}
                 disabled={confirming}
-                className="px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2 disabled:opacity-60"
+                className="bg-primary text-on-primary py-3 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br disabled:opacity-60 flex items-center gap-2"
               >
-                <span className="material-symbols-outlined text-[20px]">check_circle</span>
+                <span className="material-symbols-outlined filled-icon text-[16px]">check_circle</span>
                 {confirming
-                  ? 'Confirming…'
-                  : `Confirm & activate tracking (${pendingCount})`}
+                  ? 'CONFIRMING…'
+                  : `CONFIRM & TRACK (${pendingCount})`}
               </button>
             )}
             <button
               onClick={() => navigate('/')}
-              className="px-4 h-11 border border-outline text-primary text-body-md rounded hover:bg-surface-variant transition-colors flex items-center gap-2"
+              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
             >
-              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-              Dashboard
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+              Portfolio
             </button>
           </div>
         </header>
 
         {/* Summary line */}
-        <p className="text-body-md text-on-surface-variant">
+        <p className="text-body-md text-on-surface-variant flex items-center gap-3 flex-wrap">
           {obligations.length} obligation{obligations.length !== 1 ? 's' : ''} extracted
           {pendingCount > 0 && (
-            <span className="ml-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-on-surface-variant bg-surface-variant px-2 py-1 rounded">
-              {pendingCount} pending review
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-ochre uppercase bg-surface-container inkwell-border px-2 py-1">
+              <span className="material-symbols-outlined text-[14px]">visibility</span>
+              {pendingCount} pending
             </span>
           )}
           {lowConfidenceCount > 0 && (
-            <span className="ml-2 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-on-error-container bg-error-container px-2 py-1 rounded">
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-1">
+              <span className="material-symbols-outlined text-[14px]">gavel</span>
               {lowConfidenceCount} low confidence
             </span>
           )}
         </p>
 
         {error && obligations.length > 0 && (
-          <p role="alert" className="text-body-md text-error">{error}</p>
+          <p role="alert" className="text-body-md text-alert-crimson">{error}</p>
         )}
 
         {obligations.length === 0 ? (
-          <div className="border border-dashed border-outline-variant rounded-lg p-10 text-center bg-surface">
+          <div className="bg-surface-container-lowest inkwell-border notched-card p-10 text-center">
             <p className="text-body-md text-on-surface-variant">No obligations were found for this grant.</p>
           </div>
         ) : (
-          <div className="blueprint-bg space-y-8 rounded-xl border border-outline-variant/60 p-4 sm:p-6 lg:p-8">
+          <div className="space-y-8">
             {Object.entries(TYPE_LABELS).map(([type, label]) => {
               const items = grouped[type]
               if (!items || items.length === 0) return null
               const meta = TYPE_META[type] || TYPE_META.deadline
               return (
                 <section key={type}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span
-                      className="w-7 h-7 rounded flex items-center justify-center"
-                      style={{ color: meta.color, backgroundColor: meta.bg }}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">{meta.icon}</span>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className={`w-7 h-7 rounded flex items-center justify-center inkwell-border ${meta.bg}`}>
+                      <span className={`material-symbols-outlined filled-icon text-[18px] ${meta.color}`}>{meta.icon}</span>
                     </span>
-                    <h2 className="text-headline-md text-primary">{label}</h2>
-                    <span className="font-mono text-[12px] text-on-surface-variant">
+                    <h2 className="font-headline-lg-mobile text-headline-lg-mobile font-semibold text-primary">{label}</h2>
+                    <span className="font-source-code text-source-code text-on-surface-variant">
                       {items.length}
                     </span>
                   </div>
@@ -313,23 +338,23 @@ export default function ReviewScreen() {
                       return (
                         <div
                           key={o.id}
-                          className={`border rounded-lg p-5 flex flex-col gap-3 ${
+                          className={`bg-surface-container-lowest inkwell-border p-5 flex flex-col gap-3 notched-card ${
                             flagged
-                              ? 'border-error/40 bg-error-container/40'
+                              ? 'border-l-4 border-alert-crimson'
                               : isConfirmed
-                                ? 'border-success-border bg-success-bg/40'
-                                : 'border-outline-variant bg-surface'
+                                ? 'border-l-4 border-primary'
+                                : ''
                           }`}
                         >
                           {isEditing ? (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                               <div className="flex flex-col gap-1">
-                                <label htmlFor={`edit-type-${o.id}`} className="font-mono text-[12px] text-on-surface-variant uppercase tracking-wider">Type</label>
+                                <label htmlFor={`edit-type-${o.id}`} className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Type</label>
                                 <select
                                   id={`edit-type-${o.id}`}
                                   value={editForm.type}
                                   onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))}
-                                  className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface focus:outline-none focus:border-primary"
+                                  className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface"
                                 >
                                   {Object.entries(TYPE_LABELS).map(([val, lbl]) => (
                                     <option key={val} value={val}>{lbl}</option>
@@ -337,37 +362,37 @@ export default function ReviewScreen() {
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1 md:col-span-2">
-                                <label htmlFor={`edit-desc-${o.id}`} className="font-mono text-[12px] text-on-surface-variant uppercase tracking-wider">Description</label>
+                                <label htmlFor={`edit-desc-${o.id}`} className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Description</label>
                                 <textarea
                                   id={`edit-desc-${o.id}`}
                                   value={editForm.description}
                                   onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                                   rows={3}
-                                  className="w-full p-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface focus:outline-none focus:border-primary resize-none"
+                                  className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface resize-none"
                                 />
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label htmlFor={`edit-due-${o.id}`} className="font-mono text-[12px] text-on-surface-variant uppercase tracking-wider">Due date (optional)</label>
+                                <label htmlFor={`edit-due-${o.id}`} className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Due date (optional)</label>
                                 <input
                                   id={`edit-due-${o.id}`}
                                   type="date"
                                   value={editForm.due_date}
                                   onChange={(e) => setEditForm((f) => ({ ...f, due_date: e.target.value }))}
-                                  className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface focus:outline-none focus:border-primary"
+                                  className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface"
                                 />
                               </div>
                               <div className="flex gap-2 md:col-span-2 md:justify-end items-end">
                                 <button
                                   onClick={() => saveEdit(o.id)}
                                   disabled={saving}
-                                  className="px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors disabled:opacity-60"
+                                  className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br disabled:opacity-60"
                                 >
-                                  {saving ? 'Saving…' : 'Save'}
+                                  {saving ? 'SAVING…' : 'SAVE'}
                                 </button>
                                 <button
                                   onClick={cancelEdit}
                                   disabled={saving}
-                                  className="px-5 h-11 border border-outline text-primary text-body-md rounded hover:bg-surface-variant transition-colors"
+                                  className="py-2.5 px-5 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br"
                                 >
                                   Cancel
                                 </button>
@@ -378,56 +403,65 @@ export default function ReviewScreen() {
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {isDueSoon(o.due_date) && (
-                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-error bg-error-container px-2 py-0.5 rounded border border-error/20">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-0.5 border border-outline-variant">
                                       due soon
                                     </span>
                                   )}
                                   {flagged && (
-                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-on-error-container bg-error-container px-2 py-0.5 rounded border border-error/20">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-0.5 border border-outline-variant">
                                       flagged
                                     </span>
                                   )}
                                   {o.confidence === 'low' && o.verified && (
-                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-success bg-success-bg px-2 py-0.5 rounded border border-success-border">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
                                       verified
                                     </span>
                                   )}
                                   {isConfirmed && (
-                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-success bg-success-bg px-2 py-0.5 rounded border border-success-border">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
                                       confirmed
                                     </span>
                                   )}
                                   {o.source_page && (
-                                    <span className="font-mono text-[12px] text-on-surface-variant">
+                                    <span className="font-source-code text-source-code text-on-surface-variant">
                                       p.{o.source_page}
                                     </span>
                                   )}
                                 </div>
                               </div>
 
-                              <p className="text-body-lg text-on-surface">{o.description}</p>
+                              <p className="font-headline-lg-mobile text-headline-lg-mobile font-medium text-on-surface">
+                                {o.description}
+                              </p>
                               {o.due_date && (
-                                <p className="font-mono text-[13px] text-on-surface-variant">
+                                <p className="font-source-code text-source-code text-on-surface-variant">
                                   Due: {o.due_date}
                                 </p>
                               )}
                               {o.source_excerpt && (
-                                <blockquote className="border-l-2 border-outline-variant pl-3 text-body-md text-on-surface-variant italic">
+                                <blockquote className="border-l-2 border-outline pl-3 text-body-md text-on-surface-variant italic bg-surface-container-low px-3 py-2">
                                   &ldquo;{o.source_excerpt}&rdquo;
                                 </blockquote>
                               )}
                               {flagged && (
-                                <p className="font-mono text-[12px] text-on-error-container">
+                                <p className="font-label-caps text-label-caps text-alert-crimson uppercase">
                                   Low extraction confidence — please verify against the source clause
                                 </p>
                               )}
                               <div className="flex gap-2 flex-wrap">
+                                <button
+                                  onClick={() => setDetail(o)}
+                                  className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">plagiarism</span>
+                                  Source
+                                </button>
                                 {o.status === 'pending_review' && (
                                   <button
                                     onClick={() => startEdit(o)}
-                                    className="px-3 py-1.5 border border-outline text-primary font-mono text-[12px] rounded hover:bg-surface-variant transition-colors flex items-center gap-1.5"
+                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
                                   >
-                                    <span className="material-symbols-outlined text-[16px]">edit</span>
+                                    <span className="material-symbols-outlined text-[14px]">edit</span>
                                     Edit
                                   </button>
                                 )}
@@ -435,9 +469,9 @@ export default function ReviewScreen() {
                                   <button
                                     onClick={() => handleVerify(o.id)}
                                     disabled={verifyingId === o.id}
-                                    className="px-3 py-1.5 bg-primary text-on-primary font-mono text-[12px] rounded hover:bg-inverse-surface transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                    className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
                                   >
-                                    <span className="material-symbols-outlined text-[16px]">verified</span>
+                                    <span className="material-symbols-outlined filled-icon text-[14px]">verified</span>
                                     {verifyingId === o.id ? 'Marking…' : 'Mark as reviewed'}
                                   </button>
                                 )}
@@ -454,6 +488,135 @@ export default function ReviewScreen() {
           </div>
         )}
       </div>
+
+      {detail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Obligation detail"
+        >
+          <div
+            className="absolute inset-0 bg-inverse-surface/50 backdrop-blur-[2px]"
+            onClick={() => setDetail(null)}
+          />
+          <div className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto bg-surface-container-lowest inkwell-border shadow-2xl flex flex-col md:flex-row">
+            <div className="w-full md:w-1/2 p-6 md:p-10 flex flex-col md:border-r md:border-outline-variant">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-alert-crimson text-[20px]">flag</span>
+                  <span className="font-label-caps text-label-caps text-alert-crimson uppercase tracking-widest">
+                    {detail.status === 'confirmed' ? 'Confirmed' : detail.confidence === 'low' ? 'Flagged' : 'Needs Review'}
+                  </span>
+                </div>
+                <div className="bg-surface-dim px-2 py-1 flex items-center gap-2 inkwell-border">
+                  <span className="font-label-caps text-label-caps text-on-surface uppercase">Type:</span>
+                  <span className="font-source-code text-source-code text-on-surface">
+                    {TYPE_LABELS[detail.type] || detail.type}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-8 flex-grow">
+                <h2 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-4">
+                  {detail.description}
+                </h2>
+                <p className="text-body-md text-body-md text-on-surface-variant">
+                  {detail.source_excerpt || detail.description}
+                </p>
+                {detail.due_date && (
+                  <p className="font-source-code text-source-code text-on-surface-variant mt-4">
+                    Due: {detail.due_date}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 mt-auto pt-8 border-t border-outline-variant">
+                {detail.confidence === 'low' && !detail.verified && (
+                  <button
+                    onClick={async () => {
+                      await handleVerify(detail.id)
+                      setDetail(null)
+                    }}
+                    disabled={verifyingId === detail.id}
+                    className="bg-primary hover:bg-surface-tint text-on-primary font-label-caps text-label-caps px-6 py-3 flex items-center justify-center gap-2 transition-colors w-full sm:w-auto notched-br disabled:opacity-60"
+                  >
+                    <span className="material-symbols-outlined filled-icon text-[16px]">verified</span>
+                    {verifyingId === detail.id ? 'Resolving…' : 'Resolve Flag'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setDetail(null)}
+                  className="bg-transparent inkwell-border text-on-surface hover:bg-surface-variant font-label-caps text-label-caps px-6 py-3 transition-colors w-full sm:w-auto notched-br"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full md:w-1/2 bg-surface-container-low p-6 md:p-10 flex flex-col relative">
+              <h3 className="font-label-caps text-label-caps text-secondary mb-4 flex items-center gap-2 uppercase tracking-widest">
+                <span className="material-symbols-outlined text-[16px]">menu_book</span>
+                The Source Evidence
+              </h3>
+
+              {detail.source_excerpt ? (
+                <div className="bg-surface-dim p-6 mb-8 relative inkwell-border">
+                  <p className="font-source-code text-source-code text-on-surface leading-relaxed">
+                    &ldquo;{detail.source_excerpt}&rdquo;
+                  </p>
+                  <div className="absolute -top-3 -right-3 text-outline bg-surface-container-low p-1">
+                    <span className="material-symbols-outlined text-[14px]">content_cut</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-body-md text-body-md text-on-surface-variant mb-8">
+                  No verbatim source excerpt was captured for this obligation.
+                </p>
+              )}
+
+              <div className="mt-auto flex flex-col gap-4">
+                <div className="flex justify-between items-center border-b border-outline-variant pb-2 mb-2">
+                  <span className="font-label-caps text-label-caps text-secondary uppercase">Page Ref</span>
+                  <span className="font-source-code text-source-code text-on-surface">
+                    {detail.source_page ? `p. ${detail.source_page}` : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center border-b border-outline-variant pb-2 mb-4">
+                  <span className="font-label-caps text-label-caps text-secondary uppercase">Confidence</span>
+                  <span
+                    className={`font-source-code text-source-code flex items-center gap-1 ${
+                      detail.confidence === 'low' ? 'text-alert-crimson' : 'text-primary'
+                    }`}
+                  >
+                    {detail.confidence === 'high' ? 'High' : detail.confidence === 'medium' ? 'Medium' : 'Low'}
+                    <span className="material-symbols-outlined text-[14px]">
+                      {detail.confidence === 'low' ? 'help' : 'verified'}
+                    </span>
+                  </span>
+                </div>
+                <div className="relative w-full h-32 inkwell-border bg-surface overflow-hidden flex items-center justify-center">
+                  <div className="absolute inset-0 blueprint-grid text-primary opacity-10" />
+                  <button
+                    onClick={() => setDetail(null)}
+                    className="z-10 bg-surface text-primary font-label-caps text-label-caps px-4 py-2 flex items-center gap-2 inkwell-border hover:bg-surface-variant transition-colors uppercase"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">description</span>
+                    Return to Review
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDocument && (
+        <DocumentViewer
+          grantId={grantId}
+          grantName={grantName}
+          onClose={() => setShowDocument(false)}
+        />
+      )}
     </AppShell>
   )
 }

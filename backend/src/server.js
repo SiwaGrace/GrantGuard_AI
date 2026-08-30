@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import grantsRouter from './routes/grants.js'
+import chatRouter from './routes/chat.js'
 
 const app = express()
 
@@ -24,6 +25,7 @@ app.use(
 app.use(express.json({ limit: '1mb' }))
 
 app.use('/api', grantsRouter)
+app.use('/api', chatRouter)
 
 app.get('/health', (_req, res) => {
   res.json({

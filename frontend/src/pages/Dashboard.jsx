@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import API_URL from '../lib/api'
 import AppShell from '../components/AppShell'
+import DocumentViewer from '../components/DocumentViewer'
 
 const DUE_SOON_DAYS = 14
 
@@ -15,11 +16,18 @@ function statusBadge(grant, docStatus, pendingCount) {
   return 'on track'
 }
 
-const BADGE_STYLES = {
-  'on track': 'bg-success-bg text-success border-success-border',
-  'needs review': 'bg-error-container text-on-error-container border-error/20',
-  failed: 'bg-error-container text-on-error-container border-error/20',
-  processing: 'bg-surface-variant text-on-surface-variant border-outline-variant',
+const HEALTH = {
+  'on track': { text: 'text-primary', icon: 'check_circle', filled: true },
+  'needs review': { text: 'text-warning-ochre', icon: 'radio_button_unchecked' },
+  failed: { text: 'text-alert-crimson', icon: 'error' },
+  processing: { text: 'text-on-surface-variant', icon: 'cloud_sync' },
+}
+
+function shortId(id) {
+  return String(id || '')
+    .replace(/-/g, '')
+    .slice(0, 7)
+    .toUpperCase()
 }
 
 export default function Dashboard() {
@@ -33,12 +41,15 @@ export default function Dashboard() {
   const [dueSoonList, setDueSoonList] = useState([])
   const [flagList, setFlagList] = useState([])
 
-  const [showUpload, setShowUpload] = useState(false)
-  const formRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
+  const [query, setQuery] = useState('')
   const [deletingId, setDeletingId] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
+  const [viewDocGrant, setViewDocGrant] = useState(null)
+
+  function openUploadModal() {
+    window.dispatchEvent(new Event('grantguard:open-upload'))
+  }
 
   async function handleDeleteGrant(e, grantId) {
     e.stopPropagation()
@@ -176,11 +187,20 @@ export default function Dashboard() {
         (o) => o.grant_id === g.id && o.status === 'pending_review'
       ).length
 
+      const grantObligations = allObligations.filter((o) => o.grant_id === g.id)
+      const upcoming = grantObligations
+        .map((o) => o.due_date && new Date(o.due_date))
+        .filter((d) => d && d >= now)
+        .sort((a, b) => a - b)
+      const nextDue = upcoming.length > 0 ? new Date(upcoming[0]) : null
+
       return {
         ...g,
         docStatus: latestDoc?.extraction_status || 'pending',
         pendingCount: pending,
-        obligationCount: allObligations.filter((o) => o.grant_id === g.id).length,
+        obligationCount: grantObligations.length,
+        nextDue,
+        nextDueDueSoon: nextDue ? nextDue <= dueSoonDeadline : false,
       }
     })
 
@@ -202,160 +222,49 @@ export default function Dashboard() {
     return () => { active = false }
   }, [user, loadData, location.pathname])
 
-  async function handleUpload(event) {
-    event.preventDefault()
+  const visibleGrants = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return grants
+    return grants.filter(
+      (g) =>
+        g.name?.toLowerCase().includes(q) ||
+        g.funder_name?.toLowerCase().includes(q)
+    )
+  }, [grants, query])
 
-    const formData = new FormData(event.currentTarget)
-    const name = formData.get('name').trim()
-    const funderName = formData.get('funder_name').trim()
-    const file = formData.get('file')
-
-    if (!name || !funderName) {
-      toast.error('Grant name and funder are required.')
-      return
-    }
-    if (!file || file.size === 0) {
-      toast.error('Choose a PDF to upload.')
-      return
-    }
-
-    try {
-      setUploading(true)
-      const { data: authData } = await supabase.auth.getSession()
-      const token = authData.session?.access_token
-
-      const response = await fetch(`${API_URL}/api/grants`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      })
-      const payload = await response.json()
-
-      if (!response.ok) {
-        throw new Error(payload.error || `Upload failed (${response.status})`)
-      }
-
-      if (payload.obligationError) {
-        toast.error(`Upload succeeded but extraction had issues: ${payload.obligationError}`)
-        return
-      }
-
-      if (payload.extraction?.status !== 'extracted') {
-        const reason = payload.extraction?.error
-          ? `PDF could not be parsed: ${payload.extraction.error}`
-          : 'PDF text extraction failed. The file may be a scanned/image PDF.'
-        toast.error(reason)
-        return
-      }
-
-      if (payload.obligations && payload.obligations.length === 0) {
-        toast.error('The AI analyzed the document but found no obligations. The PDF may not contain grant agreement text.')
-        return
-      }
-
-      formRef.current?.reset()
-      toast.success('Grant uploaded and analyzed')
-      navigate(`/grants/${payload.grant.id}/review`, {
-        state: { grantName: payload.grant.name },
-      })
-    } catch (err) {
-      toast.error(err.message || 'Upload failed')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const fileInput = (
-    <>
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="upload-name"
-          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
-        >
-          Grant name
-        </label>
-        <input
-          id="upload-name"
-          name="name"
-          type="text"
-          placeholder="e.g. WASH Access Programme 2026"
-          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="upload-funder"
-          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
-        >
-          Funder
-        </label>
-        <input
-          id="upload-funder"
-          name="funder_name"
-          type="text"
-          placeholder="e.g. GlobalDev Foundation"
-          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="upload-file"
-          className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase tracking-wider"
-        >
-          Agreement PDF (max 15 MB)
-        </label>
-        <input
-          id="upload-file"
-          name="file"
-          type="file"
-          accept="application/pdf"
-          className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface file:mr-3 file:border-0 file:bg-surface-container file:px-3 file:h-full file:text-on-surface focus:outline-none focus:border-primary transition-colors"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={uploading}
-        className="self-start px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2 disabled:opacity-60"
-      >
-        <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
-        {uploading ? 'Uploading & extracting…' : 'Upload & extract'}
-      </button>
-    </>
-  )
+  const avatarInitial = (user?.email || '?').slice(0, 1).toUpperCase()
 
   return (
     <AppShell>
-      <div className="space-y-10">
-        {/* Page header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant pb-6">
-          <div>
-            <h1 className="text-[32px] sm:text-[40px] leading-[1.05] font-semibold tracking-tight text-primary">
-              Portfolio Overview
-            </h1>
-            <p className="text-body-lg text-on-surface-variant mt-2 max-w-2xl">
-              High-level metrics and active grant tracking across all your obligations.
-            </p>
+      <div className="flex flex-col h-full space-y-8">
+        {/* Top header */}
+        <header className="inkwell-border-b flex justify-between items-center shrink-0 pb-6 gap-4 flex-wrap">
+          <h2 className="font-headline-lg text-headline-lg text-on-surface">Portfolio Overview</h2>
+          <div className="flex items-center gap-4">
+            <div className="relative hidden sm:block">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[18px]">
+                search
+              </span>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search grants, clauses, or donors..."
+                className="bg-surface-container-low inkwell-border py-2 pl-10 pr-4 text-source-code font-source-code w-64 focus:outline-none focus:border-primary placeholder-secondary"
+              />
+            </div>
+            <div className="w-8 h-8 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase">
+              {avatarInitial}
+            </div>
+            <button
+              onClick={openUploadModal}
+              className="bg-primary text-on-primary py-2 px-4 notched-br hover:bg-surface-tint transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest"
+            >
+              <span className="material-symbols-outlined text-[16px]">upload_file</span>
+              Upload Grant
+            </button>
           </div>
-          <button
-            onClick={() => setShowUpload(!showUpload)}
-            className="shrink-0 px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-[20px]">
-              {showUpload ? 'close' : 'add'}
-            </span>
-            {showUpload ? 'Cancel' : 'Upload agreement'}
-          </button>
         </header>
-
-        {/* Upload form */}
-        {showUpload && (
-          <div className="border border-outline-variant bg-surface rounded-lg p-6">
-            <h2 className="text-headline-md text-primary mb-5">Upload a grant agreement</h2>
-            <form ref={formRef} onSubmit={handleUpload} className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
-              {fileInput}
-            </form>
-          </div>
-        )}
 
         {/* Loading */}
         {loading ? (
@@ -364,84 +273,68 @@ export default function Dashboard() {
             <p className="text-body-md">Loading your grants…</p>
           </div>
         ) : grants.length === 0 ? (
-          <div className="border border-dashed border-outline-variant rounded-lg p-10 flex flex-col items-center justify-center text-center bg-surface">
+          <div className="bg-surface-container-lowest inkwell-border notched-card p-10 flex flex-col items-center justify-center text-center relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none opacity-5 blueprint-grid text-primary" />
             <span className="material-symbols-outlined text-[48px] text-secondary mb-4">description</span>
-            <h2 className="text-headline-md text-primary mb-1">Welcome to GrantGuard AI</h2>
+            <h2 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">
+              Welcome to your Compliance Vault
+            </h2>
             <p className="text-body-md text-on-surface-variant max-w-md">
               You haven&apos;t uploaded any grant agreements yet. Upload your first one to track
               obligations, deadlines, and compliance requirements.
             </p>
             <button
-              onClick={() => setShowUpload(true)}
-              className="mt-6 px-5 h-11 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors flex items-center gap-2"
+              onClick={openUploadModal}
+              className="mt-6 bg-primary text-on-primary py-3 px-5 font-label-caps text-label-caps tracking-wider flex items-center gap-2 hover:bg-surface-tint transition-colors notched-br"
             >
-              <span className="material-symbols-outlined">upload_file</span>
-              Upload your first agreement
+              <span className="material-symbols-outlined filled-icon text-[16px]">upload</span>
+              UPLOAD FIRST AGREEMENT
             </button>
           </div>
         ) : (
           <>
-            {/* Metric row */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-surface-container-lowest border border-outline-variant p-6 rounded-lg flex flex-col hover:border-outline transition-colors">
-                <span className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase mb-3">
-                  Active Grants
-                </span>
-                <span className="text-display-web text-primary mt-auto">{stats.total}</span>
+            {/* Stat ledger */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-primary opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
+                <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Active Grants</p>
+                <div className="flex items-end gap-3">
+                  <span className="font-display-lg text-display-lg text-on-surface">{stats.total}</span>
+                  <span className="font-label-caps text-label-caps text-primary mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">domain</span> In portfolio
+                  </span>
+                </div>
               </div>
-              <div className="bg-surface-container-lowest border border-outline-variant p-6 rounded-lg flex flex-col hover:border-outline transition-colors">
-                <span className="font-mono text-[12px] leading-4 text-on-surface-variant uppercase mb-3">
-                  Obligations tracked
-                </span>
-                <span className="text-display-web text-primary mt-auto">{stats.obligations}</span>
+
+              <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-alert-crimson opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
+                <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Due Soon ({DUE_SOON_DAYS}d)</p>
+                <div className="flex items-end gap-3">
+                  <span className="font-display-lg text-display-lg text-alert-crimson">{stats.dueSoon}</span>
+                  <span className="font-label-caps text-label-caps text-alert-crimson mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">warning</span> Action required
+                  </span>
+                </div>
               </div>
-              <div
-                className={`border p-6 rounded-lg flex flex-col relative overflow-hidden hover:border-outline transition-colors ${
-                  stats.dueSoon > 0
-                    ? 'bg-error-container border-error/30'
-                    : 'bg-surface-container-lowest border-outline-variant'
-                }`}
-              >
-                <span
-                  className={`font-mono text-[12px] leading-4 uppercase mb-3 flex items-center gap-1.5 ${
-                    stats.dueSoon > 0 ? 'text-on-error-container' : 'text-on-surface-variant'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">schedule</span>
-                  Due within {DUE_SOON_DAYS} days
-                </span>
-                <span
-                  className={`text-display-web mt-auto ${
-                    stats.dueSoon > 0 ? 'text-on-error-container' : 'text-primary'
-                  }`}
-                >
-                  {stats.dueSoon}
-                </span>
-              </div>
-              <div
-                className={`border p-6 rounded-lg flex flex-col relative overflow-hidden hover:border-outline transition-colors ${
-                  stats.lowConf > 0
-                    ? 'bg-error-container border-error/30'
-                    : 'bg-surface-container-lowest border-outline-variant'
-                }`}
-              >
-                <span className={`font-mono text-[12px] leading-4 uppercase mb-3 flex items-center gap-1.5 ${stats.lowConf > 0 ? 'text-on-error-container' : 'text-on-surface-variant'}`}>
-                  <span className="material-symbols-outlined text-[16px]">warning</span>
-                  Needs review
-                </span>
-                <span className={`text-display-web mt-auto ${stats.lowConf > 0 ? 'text-on-error-container' : 'text-primary'}`}>
-                  {stats.lowConf}
-                </span>
+
+              <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
+                <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Clauses Flagged</p>
+                <div className="flex items-end gap-3">
+                  <span className="font-display-lg text-display-lg text-warning-ochre">{stats.lowConf}</span>
+                  <span className="font-label-caps text-label-caps text-warning-ochre mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">visibility</span> Needs audit
+                  </span>
+                </div>
               </div>
             </section>
 
             {/* Due soon */}
             {dueSoonList.length > 0 && (
               <section>
-                <h2 className="text-headline-md text-primary mb-1">Due soon</h2>
-                <p className="text-body-md text-on-surface-variant mb-4">
-                  Obligations with due dates in the next {DUE_SOON_DAYS} days
-                </p>
+                <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
+                  Upcoming Obligations · {DUE_SOON_DAYS} Day Window
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {dueSoonList.map((o) => (
                     <button
@@ -451,18 +344,18 @@ export default function Dashboard() {
                           state: { grantName: o.grantName },
                         })
                       }
-                      className="text-left border border-outline-variant bg-surface rounded-lg p-4 hover:border-outline hover:bg-surface-container-lowest transition-colors"
+                      className="text-left bg-surface-container-lowest inkwell-border p-4 hover:bg-surface-container-low transition-colors notched-card"
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="font-mono text-[11px] uppercase tracking-wider text-on-surface-variant">{o.type.replace('_', ' ')}</span>
-                        <span className="font-mono text-[11px] text-error font-semibold">
-                          {o.daysLeft === 0 ? 'Today' : o.daysLeft === 1 ? 'Tomorrow' : `${o.daysLeft} days`}
+                        <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">{o.type.replace('_', ' ')}</span>
+                        <span className="font-label-caps text-label-caps text-alert-crimson">
+                          {o.daysLeft === 0 ? 'TODAY' : o.daysLeft === 1 ? 'TOMORROW' : `${o.daysLeft} DAYS`}
                         </span>
                       </div>
                       <p className="text-body-md font-medium text-primary mb-1">{o.description}</p>
-                      <p className="font-mono text-[12px] text-on-surface-variant">
+                      <p className="font-source-code text-source-code text-on-surface-variant">
                         {o.grantName}
-                        {o.due_date && ` • Due ${o.due_date}`}
+                        {o.due_date && ` · Due ${o.due_date}`}
                       </p>
                     </button>
                   ))}
@@ -473,10 +366,9 @@ export default function Dashboard() {
             {/* Compliance flags */}
             {flagList.length > 0 && (
               <section>
-                <h2 className="text-headline-md text-primary mb-1">Compliance flags</h2>
-                <p className="text-body-md text-on-surface-variant mb-4">
-                  These obligations have low extraction confidence and need your review
-                </p>
+                <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
+                  Compliance Flags · Low Confidence Clauses
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {flagList.map((o) => (
                     <button
@@ -486,14 +378,14 @@ export default function Dashboard() {
                           state: { grantName: o.grantName },
                         })
                       }
-                      className="text-left border-l-2 border-error bg-error-container rounded-r-lg p-4 flex gap-3 hover:brightness-95 transition"
+                      className="text-left bg-surface-container-lowest border-l-4 border-alert-crimson inkwell-border notched-card p-4 flex gap-3 hover:bg-error-container/40 transition-colors"
                     >
-                      <span className="material-symbols-outlined text-on-error-container shrink-0">gavel</span>
+                      <span className="material-symbols-outlined text-alert-crimson shrink-0">gavel</span>
                       <div>
-                        <p className="text-body-md font-medium text-on-error-container mb-1">{o.description}</p>
-                        <p className="font-mono text-[12px] text-on-error-container/80">
+                        <p className="text-body-md font-medium text-on-surface mb-1">{o.description}</p>
+                        <p className="font-source-code text-source-code text-on-surface-variant">
                           {o.grantName}
-                          {o.due_date && ` • Due ${o.due_date}`}
+                          {o.due_date && ` · Due ${o.due_date}`}
                         </p>
                       </div>
                     </button>
@@ -502,77 +394,120 @@ export default function Dashboard() {
               </section>
             )}
 
-            {/* Grants list */}
+            {/* Agreements ledger */}
             <section>
-              <h2 className="text-headline-md text-primary mb-4">Your grants</h2>
-              <div className="border border-outline-variant rounded-lg overflow-hidden bg-surface-container-lowest">
-                <div className="hidden md:flex px-4 py-3 bg-surface-container font-mono text-[12px] text-on-surface-variant uppercase tracking-wider border-b border-outline-variant">
-                  <span className="flex-1">Grant</span>
-                  <span className="w-40">Status</span>
-                  <span className="w-24 text-right">Actions</span>
-                </div>
-                <div className="divide-y divide-outline-variant">
-                  {grants.map((g) => {
-                    const badge = statusBadge(g, g.docStatus, g.pendingCount)
-                    return (
-                      <div key={g.id} className="flex flex-col md:flex-row md:items-center gap-3 px-4 py-4 hover:bg-surface-container-low transition-colors">
-                        <button
-                          onClick={() =>
-                            navigate(`/grants/${g.id}/review`, {
-                              state: { grantName: g.name },
-                            })
-                          }
-                          className="flex-1 text-left"
-                        >
-                          <div className="text-body-md font-medium text-primary">{g.name}</div>
-                          <div className="font-mono text-[12px] text-on-surface-variant mt-0.5">
-                            {g.funder_name} • {g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}
-                            {g.pendingCount > 0 ? ` • ${g.pendingCount} pending` : ''} •{' '}
-                            {new Date(g.created_at).toLocaleDateString()}
-                          </div>
-                        </button>
-                        <span
-                          className={`inline-flex items-center gap-1.5 w-fit md:w-40 px-2.5 py-1 rounded font-mono text-[11px] uppercase tracking-wider border ${BADGE_STYLES[badge] || BADGE_STYLES['processing']}`}
-                        >
-                          <span className="material-symbols-outlined text-[14px]">
-                            {badge === 'on track' ? 'check_circle' : badge === 'failed' ? 'error' : badge === 'needs review' ? 'warning' : 'schedule'}
-                          </span>
-                          {badge}
-                        </span>
-                        <div className="flex gap-2 md:w-24 md:justify-end">
-                          {g.docStatus === 'failed' && (
-                            <button
-                              className="px-3 py-1.5 border border-outline text-primary font-mono text-[12px] rounded hover:bg-surface-variant transition-colors"
-                              disabled={retryingId === g.id}
-                              onClick={(e) => handleRetryExtraction(e, g.id)}
-                            >
-                              {retryingId === g.id ? 'Retrying…' : 'Retry'}
-                            </button>
-                          )}
+              <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
+                Active Agreements Ledger
+              </h3>
+              {visibleGrants.length === 0 ? (
+                <p className="text-body-md text-on-surface-variant bg-surface-container-lowest inkwell-border p-6">
+                  No grants match &ldquo;{query}&rdquo;.
+                </p>
+              ) : (
+                <div className="bg-surface-container-lowest inkwell-border">
+                  {/* Table header */}
+                  <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 inkwell-border-b bg-surface-container-low">
+                    <div className="col-span-4 font-label-caps text-label-caps text-secondary uppercase">Grant ID / Name</div>
+                    <div className="col-span-3 font-label-caps text-label-caps text-secondary uppercase">Donor Entity</div>
+                    <div className="col-span-2 font-label-caps text-label-caps text-secondary uppercase">Health</div>
+                    <div className="col-span-3 font-label-caps text-label-caps text-secondary uppercase text-right">Next Deadline</div>
+                  </div>
+
+                  <div className="divide-y divide-outline">
+                    {visibleGrants.map((g) => {
+                      const badge = statusBadge(g, g.docStatus, g.pendingCount)
+                      const health = HEALTH[badge] || HEALTH.processing
+                      return (
+                        <div key={g.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-center hover:bg-surface-container-low transition-colors">
                           <button
-                            className={`px-3 py-1.5 border font-mono text-[12px] rounded transition-colors ${
-                              confirmDeleteId === g.id
-                                ? 'bg-error text-on-error border-error'
-                                : 'border-outline text-on-surface hover:bg-surface-variant'
-                            }`}
-                            disabled={deletingId === g.id}
-                            onClick={(e) => handleDeleteGrant(e, g.id)}
-                            onBlur={() => setConfirmDeleteId((cur) => (cur === g.id ? null : cur))}
+                            onClick={() =>
+                              navigate(`/grants/${g.id}/review`, {
+                                state: { grantName: g.name },
+                              })
+                            }
+                            className="col-span-4 text-left group"
                           >
-                            {deletingId === g.id
-                              ? 'Deleting…'
-                              : confirmDeleteId === g.id
-                                ? 'Confirm?'
-                                : 'Delete'}
+                            <span className="font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm mr-2 text-on-surface-variant">
+                              G-{shortId(g.grant_id || g.id)}
+                            </span>
+                            <span className="text-body-sm text-body-sm text-on-surface group-hover:text-primary transition-colors">
+                              {g.name}
+                            </span>
                           </button>
+                          <div className="col-span-3 text-body-sm text-body-sm text-secondary">{g.funder_name || '—'}</div>
+                          <div className="col-span-2">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-surface-container inkwell-border rounded-sm">
+                              <span className={`material-symbols-outlined text-[16px] ${health.filled ? 'filled-icon' : ''} ${health.text}`}>
+                                {health.icon}
+                              </span>
+                              <span className={`font-label-caps text-[10px] uppercase ${health.text}`}>{badge}</span>
+                            </span>
+                          </div>
+                          <div className="col-span-3 flex items-center justify-between md:justify-end gap-3">
+                            <span className={`font-source-code text-source-code ${g.nextDueDueSoon ? 'text-alert-crimson' : 'text-on-surface'}`}>
+                              {g.nextDue
+                                ? g.nextDue.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                                : '—'}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[10px] uppercase hover:bg-surface-container transition-colors flex items-center gap-1"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setViewDocGrant(g)
+                                }}
+                                title="View uploaded document"
+                              >
+                                <span className="material-symbols-outlined text-[12px]">visibility</span>
+                                View
+                              </button>
+                              {g.docStatus === 'failed' && (
+                                <button
+                                  className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[10px] uppercase hover:bg-surface-container transition-colors"
+                                  disabled={retryingId === g.id}
+                                  onClick={(e) => handleRetryExtraction(e, g.id)}
+                                >
+                                  {retryingId === g.id ? '…' : 'Retry'}
+                                </button>
+                              )}
+                              <button
+                                className={`px-2.5 py-1 border font-label-caps text-[10px] uppercase transition-colors ${
+                                  confirmDeleteId === g.id
+                                    ? 'bg-error text-on-error border-error'
+                                    : 'border-outline text-on-surface hover:bg-surface-container'
+                                }`}
+                                disabled={deletingId === g.id}
+                                onClick={(e) => handleDeleteGrant(e, g.id)}
+                                onBlur={() => setConfirmDeleteId((cur) => (cur === g.id ? null : cur))}
+                              >
+                                {deletingId === g.id
+                                  ? '…'
+                                  : confirmDeleteId === g.id
+                                    ? 'Confirm?'
+                                    : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
+                          {/* Mobile sub-line */}
+                          <div className="md:hidden text-body-sm text-body-sm text-secondary">
+                            {g.funder_name || '—'} · {g.obligationCount} obligation{g.obligationCount !== 1 ? 's' : ''}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
           </>
+        )}
+
+        {viewDocGrant && (
+          <DocumentViewer
+            grantId={viewDocGrant.id}
+            grantName={viewDocGrant.name}
+            onClose={() => setViewDocGrant(null)}
+          />
         )}
       </div>
     </AppShell>

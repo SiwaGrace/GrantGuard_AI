@@ -10,6 +10,7 @@ export default function Login() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -47,89 +48,118 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        {/* Brand */}
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center mb-4">
-            <span className="material-symbols-outlined text-[26px]">shield_check</span>
-          </div>
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary">GrantGuard AI</h1>
-          <p className="font-mono text-[12px] text-on-surface-variant uppercase tracking-widest mt-1">
-            Compliance &amp; Evidence Engine
-          </p>
-        </div>
+    <div className="min-h-screen bg-surface-container-low flex items-center justify-center px-4 py-10 font-body-md text-on-surface">
+      <div className="w-full max-w-md bg-surface-container-lowest border border-outline-variant notched-br flex flex-col relative overflow-hidden">
+        {/* Blueprint grid accents */}
+        <div className="absolute inset-0 pointer-events-none opacity-5 blueprint-grid text-primary" />
+        <div className="absolute top-0 left-0 w-full h-[1px] bg-primary" />
+        <div className="absolute top-0 left-0 h-full w-[1px] bg-primary" />
 
-        <div className="bg-surface border border-outline-variant rounded-lg p-6 sm:p-8 shadow-sm">
-          <h2 className="text-headline-md text-primary mb-1">Welcome back</h2>
-          <p className="text-body-md text-on-surface-variant mb-6">Log in to your account</p>
+        <div className="p-8 relative z-10 flex flex-col gap-8">
+          {/* Header */}
+          <div className="text-center space-y-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-container text-on-primary-container rounded-sm mb-2 border border-outline-variant">
+              <span className="material-symbols-outlined filled-icon text-[24px]">assured_workload</span>
+            </div>
+            <h1 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface">
+              Secure Your Compliance Vault
+            </h1>
+            <p className="text-body-sm text-body-sm text-secondary max-w-[280px] mx-auto">
+              Trusted by NGOs worldwide for traceable grant management.
+            </p>
+          </div>
 
           {error && (
             <div
               role="alert"
-              className="mb-5 px-4 py-3 rounded border border-error/20 bg-error-container text-on-error-container text-body-md flex items-center gap-2"
+              className="px-4 py-3 border border-error bg-error-container text-on-error-container text-body-md flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-[18px] shrink-0">error</span>
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="login-email" className="font-mono text-[12px] text-on-surface-variant uppercase tracking-wider">
-                Email
-              </label>
-              <input
-                id="login-email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
-              />
+          {/* Form */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-6">
+            <div className="space-y-5">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="login-email" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
+                  Organizational Email
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="user@ngo.org"
+                  className="bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="login-password" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
+                  Access Protocol
+                </label>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {showPassword ? 'visibility_off' : 'visibility'}
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="login-password" className="font-mono text-[12px] text-on-surface-variant uppercase tracking-wider">
-                Password
-              </label>
-              <input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                className="w-full h-11 px-3 bg-surface border border-outline-variant rounded text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary transition-colors"
-              />
+            {/* Actions */}
+            <div className="flex flex-col gap-4 mt-8 pt-4 border-t border-outline-variant border-dashed">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-3 px-4 bg-primary text-on-primary font-label-caps text-label-caps tracking-wider flex items-center justify-center gap-2 hover:bg-surface-tint transition-colors notched-br disabled:opacity-60"
+              >
+                {submitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-on-primary/40 border-t-on-primary rounded-full animate-spin" />
+                    AUTHENTICATING…
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">login</span>
+                    AUTHENTICATE
+                  </>
+                )}
+              </button>
+              <Link
+                to="/signup"
+                className="w-full py-3 px-4 bg-transparent border border-outline text-primary font-label-caps text-label-caps tracking-wider flex items-center justify-center gap-2 hover:bg-surface-container transition-colors notched-br"
+              >
+                <span className="material-symbols-outlined text-[16px]">how_to_reg</span>
+                CREATE ACCOUNT
+              </Link>
             </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full h-12 bg-primary text-on-primary text-body-md font-medium rounded hover:bg-inverse-surface transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {submitting ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-on-primary/40 border-t-on-primary rounded-full animate-spin" />
-                  Logging in…
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[20px]">login</span>
-                  Log in
-                </>
-              )}
-            </button>
           </form>
 
-          <p className="text-body-md text-on-surface-variant mt-6 text-center">
-            Don&apos;t have an account?{' '}
-            <Link to="/signup" className="text-primary font-semibold hover:underline">
-              Sign up
-            </Link>
-          </p>
+          <div className="text-center">
+            <p className="text-body-sm text-body-sm text-secondary">
+              By accessing this vault, you agree to the{' '}
+              <Link to="/signup" className="text-primary hover:underline">Audit Logs</Link> &{' '}
+              <Link to="/signup" className="text-primary hover:underline">Terms of Service</Link>.
+            </p>
+          </div>
         </div>
       </div>
     </div>

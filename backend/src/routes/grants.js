@@ -452,4 +452,52 @@ router.post('/grants/:id/obligations/confirm', requireAuth, async (req, res) => 
   })
 })
 
+// ── Stream the uploaded document PDF for a grant ─────────────────
+router.get('/grants/:id/document', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('id, name')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  const { data: docs } = await supabaseAdmin
+    .from('documents')
+    .select('*')
+    .eq('grant_id', grantId)
+    .order('uploaded_at', { ascending: false })
+    .limit(1)
+
+  if (!docs || docs.length === 0) {
+    return res.status(404).json({ error: 'No document uploaded for this grant' })
+  }
+
+  const doc = docs[0]
+
+  const { data: fileData, error: downloadErr } = await supabaseAdmin.storage
+    .from(GRANT_DOCUMENTS_BUCKET)
+    .download(doc.file_path)
+
+  if (downloadErr || !fileData) {
+    console.error('[document] Download failed:', downloadErr?.message)
+    return res.status(500).json({ error: 'Could not load the document from storage' })
+  }
+
+  const buffer = Buffer.from(await fileData.arrayBuffer())
+  const fileName = doc.file_path.split('/').pop() || 'document.pdf'
+
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Length', buffer.length)
+  res.setHeader('Content-Disposition', `inline; filename="${fileName}"`)
+  res.setHeader('Cache-Control', 'private, max-age=60')
+  res.send(buffer)
+})
+
 export default router
