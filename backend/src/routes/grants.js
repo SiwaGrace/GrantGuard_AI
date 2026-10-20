@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { Router } from 'express'
 import multer from 'multer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
@@ -7,7 +8,7 @@ import {
   MAX_FILE_BYTES,
 } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
-import { extractObligations } from '../lib/openrouter.js'
+import { extractObligations } from '../lib/groq.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -498,6 +499,87 @@ router.get('/grants/:id/document', requireAuth, async (req, res) => {
   res.setHeader('Content-Disposition', `inline; filename="${fileName}"`)
   res.setHeader('Cache-Control', 'private, max-age=60')
   res.send(buffer)
+})
+
+// ── Generate / regenerate a public read-only share token for a grant ─
+router.post('/grants/:id/share', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('id')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  const token = randomBytes(24).toString('base64url')
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('grants')
+    .update({ share_token: token })
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .select('share_token')
+    .single()
+
+  if (error) {
+    return res.status(500).json({ error: error.message })
+  }
+
+  res.json({ share_token: updated.share_token })
+})
+
+// ── Revoke a grant's share token (invalidates the public link) ─────
+router.post('/grants/:id/share/revoke', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('id')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  const { error } = await supabaseAdmin
+    .from('grants')
+    .update({ share_token: null })
+    .eq('id', grantId)
+    .eq('user_id', userId)
+
+  if (error) {
+    return res.status(500).json({ error: error.message })
+  }
+
+  res.json({ revoked: true })
+})
+
+// ── Fetch current share token for a grant (owner only) ────────────
+router.get('/grants/:id/share', requireAuth, async (req, res) => {
+  const userId = req.user.id
+  const grantId = req.params.id
+
+  const { data: grant, error: grantErr } = await supabaseAdmin
+    .from('grants')
+    .select('share_token')
+    .eq('id', grantId)
+    .eq('user_id', userId)
+    .single()
+
+  if (grantErr || !grant) {
+    return res.status(404).json({ error: 'Grant not found' })
+  }
+
+  res.json({ share_token: grant.share_token })
 })
 
 export default router

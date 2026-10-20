@@ -10,6 +10,7 @@ const ReviewScreen = lazy(() => import('./pages/ReviewScreen'))
 const Portfolio = lazy(() => import('./pages/Portfolio'))
 const Alerts = lazy(() => import('./pages/Alerts'))
 const Settings = lazy(() => import('./pages/Settings'))
+const SharedGrantSummary = lazy(() => import('./pages/SharedGrantSummary'))
 
 function PageLoader() {
   return (
@@ -34,6 +35,7 @@ function App() {
             </Route>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
+            <Route path="/s/:token" element={<SharedGrantSummary />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

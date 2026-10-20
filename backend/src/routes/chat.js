@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 const SYSTEM_PROMPT = `You are GrantGuard, a grant compliance assistant. You help a nonprofit/grantee organisation manage their grant portfolio.
 
@@ -42,7 +42,7 @@ function buildSnapshot(grants, obligationsByGrant) {
 }
 
 function buildChatRequestBody(snapshot, question, history) {
-  const model = process.env.CHAT_MODEL || process.env.MODEL || 'openai/gpt-4o-mini'
+  const model = process.env.CHAT_MODEL || process.env.MODEL || 'openai/gpt-oss-120b'
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }]
 
   for (const h of history || []) {
@@ -77,9 +77,9 @@ router.post('/chat', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Message is too long' })
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'OPENROUTER_API_KEY is not set' })
+    return res.status(500).json({ error: 'GROQ_API_KEY is not set' })
   }
 
   try {
@@ -107,13 +107,11 @@ router.post('/chat', requireAuth, async (req, res) => {
     const snapshot = buildSnapshot(grants || [], byGrant)
     const body = buildChatRequestBody(snapshot, message.trim(), history)
 
-    const resLLM = await fetch(OPENROUTER_API_URL, {
+    const resLLM = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://grantguard.ai',
-        'X-Title': 'GrantGuard AI',
       },
       body: JSON.stringify(body),
     })
@@ -121,7 +119,7 @@ router.post('/chat', requireAuth, async (req, res) => {
     const payload = await resLLM.json()
 
     if (!resLLM.ok) {
-      const msg = payload?.error?.message || payload?.error || `OpenRouter ${resLLM.status}`
+      const msg = payload?.error?.message || payload?.error || `Groq ${resLLM.status}`
       return res.status(502).json({ error: `AI request failed: ${msg}` })
     }
 

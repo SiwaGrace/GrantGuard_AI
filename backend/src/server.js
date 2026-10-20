@@ -38,9 +38,9 @@ app.get('/api/diagnose', async (_req, res) => {
   const results = { checks: [] }
 
   results.checks.push({
-    name: 'OPENROUTER_API_KEY',
-    ok: !!process.env.OPENROUTER_API_KEY,
-    detail: process.env.OPENROUTER_API_KEY ? `starts with ${process.env.OPENROUTER_API_KEY.slice(0, 12)}...` : 'MISSING',
+    name: 'GROQ_API_KEY',
+    ok: !!process.env.GROQ_API_KEY,
+    detail: process.env.GROQ_API_KEY ? `starts with ${process.env.GROQ_API_KEY.slice(0, 12)}...` : 'MISSING',
   })
 
   results.checks.push({
@@ -63,7 +63,7 @@ app.get('/api/diagnose', async (_req, res) => {
 
   try {
     const testText = 'The Grantee shall submit quarterly reports within 30 days of each quarter end. All funds must be used for WASH activities. The project must be completed by December 31, 2026.'
-    const { extractObligations } = await import('./lib/openrouter.js')
+    const { extractObligations } = await import('./lib/groq.js')
     const obligations = await extractObligations(testText)
     results.checks.push({
       name: 'LLM Extraction',

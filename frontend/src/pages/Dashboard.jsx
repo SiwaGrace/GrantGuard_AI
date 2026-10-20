@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import API_URL from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
+import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
 
 const DUE_SOON_DAYS = 14
 
@@ -37,6 +38,7 @@ export default function Dashboard() {
 
   const [loading, setLoading] = useState(true)
   const [grants, setGrants] = useState([])
+  const [portfolioObligations, setPortfolioObligations] = useState([])
   const [stats, setStats] = useState({ total: 0, obligations: 0, dueSoon: 0, lowConf: 0 })
   const [dueSoonList, setDueSoonList] = useState([])
   const [flagList, setFlagList] = useState([])
@@ -49,6 +51,21 @@ export default function Dashboard() {
 
   function openUploadModal() {
     window.dispatchEvent(new Event('grantguard:open-upload'))
+  }
+
+  function exportToCalendar() {
+    const grantNameMap = {}
+    grants.forEach((g) => {
+      grantNameMap[g.id] = g.name
+    })
+    const events = buildCalendarEvents(portfolioObligations, grantNameMap)
+    if (events.length === 0) {
+      toast.error('No dated obligations to export yet.')
+      return
+    }
+    const ics = toIcs(events)
+    downloadIcs('grantguard-deadlines.ics', ics)
+    toast.success(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'} to calendar`)
   }
 
   async function handleDeleteGrant(e, grantId) {
@@ -163,6 +180,7 @@ export default function Dashboard() {
         return { ...o, grantName: grant?.name || 'Unknown grant' }
       })
 
+    setPortfolioObligations(allObligations)
     setStats({
       total: grantList.length,
       obligations: allObligations.length,
@@ -256,6 +274,15 @@ export default function Dashboard() {
             <div className="w-8 h-8 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase">
               {avatarInitial}
             </div>
+            <button
+              onClick={exportToCalendar}
+              disabled={portfolioObligations.length === 0}
+              className="py-2 px-4 notched-br border border-outline text-primary hover:bg-surface-container transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest disabled:opacity-40"
+              title="Export all dated obligations to a calendar file"
+            >
+              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+              Export Calendar
+            </button>
             <button
               onClick={openUploadModal}
               className="bg-primary text-on-primary py-2 px-4 notched-br hover:bg-surface-tint transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest"

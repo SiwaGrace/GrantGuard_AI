@@ -1,4 +1,4 @@
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 const SYSTEM_PROMPT = `You are a grant compliance analyst. Given the text of a grant agreement, extract ALL obligations the grantee must fulfil. Return ONLY valid JSON — no markdown, no explanation, no code fences.
 
@@ -20,24 +20,22 @@ Rules:
 7. Do NOT invent obligations not present in the text.`
 
 export async function extractObligations(text, { retries = 3 } = {}) {
-  const model = process.env.MODEL || 'openai/gpt-4o-mini'
-  const apiKey = process.env.OPENROUTER_API_KEY
+  const model = process.env.MODEL || 'openai/gpt-oss-120b'
+  const apiKey = process.env.GROQ_API_KEY
 
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not set')
+    throw new Error('GROQ_API_KEY is not set')
   }
 
   let lastError = null
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(OPENROUTER_API_URL, {
+      const res = await fetch(GROQ_API_URL, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://grantguard.ai',
-          'X-Title': 'GrantGuard AI',
         },
         body: JSON.stringify({
           model,
@@ -47,15 +45,16 @@ export async function extractObligations(text, { retries = 3 } = {}) {
           ],
           temperature: 0.1,
           max_tokens: 4096,
+          response_format: { type: 'json_object' },
         }),
       })
 
       if (res.status === 429 || res.status >= 500) {
         const body = await res.text().catch(() => '')
-        lastError = new Error(`OpenRouter ${res.status}: ${body.slice(0, 200)}`)
+        lastError = new Error(`Groq ${res.status}: ${body.slice(0, 200)}`)
         if (attempt < retries) {
           const delay = Math.min(1000 * 2 ** (attempt - 1), 10000)
-          console.warn(`OpenRouter ${res.status}, retrying in ${delay}ms (attempt ${attempt}/${retries})`)
+          console.warn(`Groq ${res.status}, retrying in ${delay}ms (attempt ${attempt}/${retries})`)
           await new Promise((r) => setTimeout(r, delay))
           continue
         }
@@ -64,14 +63,14 @@ export async function extractObligations(text, { retries = 3 } = {}) {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '')
-        throw new Error(`OpenRouter ${res.status}: ${body.slice(0, 300)}`)
+        throw new Error(`Groq ${res.status}: ${body.slice(0, 300)}`)
       }
 
       const data = await res.json()
       const raw = data.choices?.[0]?.message?.content
 
       if (!raw) {
-        throw new Error('OpenRouter returned empty content')
+        throw new Error('Groq returned empty content')
       }
 
       return parseObligations(raw)

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import API_URL from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
+import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
 
 const DUE_SOON_DAYS = 14
 
@@ -50,6 +51,79 @@ export default function ReviewScreen() {
 
   const [detail, setDetail] = useState(null)
   const [showDocument, setShowDocument] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareToken, setShareToken] = useState(null)
+  const [shareBusy, setShareBusy] = useState(false)
+
+  function exportToCalendar() {
+    const grantNameMap = { [grantId]: grantName }
+    const events = buildCalendarEvents(obligations, grantNameMap)
+    if (events.length === 0) {
+      toast.error('This grant has no dated obligations to export.')
+      return
+    }
+    const ics = toIcs(events)
+    const safe = (grantName || 'grant').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    downloadIcs(`grantguard-${safe}-deadlines.ics`, ics)
+    toast.success(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'} to calendar`)
+  }
+
+  async function fetchShareToken() {
+    try {
+      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, { headers })
+      if (!res.ok) throw new Error('Could not load share status')
+      const payload = await res.json()
+      setShareToken(payload.share_token || null)
+    } catch (err) {
+      toast.error(err.message || 'Could not load share status')
+    }
+  }
+
+  async function handleGenerateShare() {
+    setShareBusy(true)
+    try {
+      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, {
+        method: 'POST',
+        headers,
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Could not create share link')
+      setShareToken(payload.share_token)
+      toast.success('Share link generated')
+    } catch (err) {
+      toast.error(err.message || 'Could not create share link')
+    } finally {
+      setShareBusy(false)
+    }
+  }
+
+  async function handleRevokeShare() {
+    setShareBusy(true)
+    try {
+      const res = await fetch(`${API_URL}/api/grants/${grantId}/share/revoke`, {
+        method: 'POST',
+        headers,
+      })
+      const payload = await res.json()
+      if (!res.ok) throw new Error(payload.error || 'Could not revoke share link')
+      setShareToken(null)
+      toast.success('Share link revoked')
+    } catch (err) {
+      toast.error(err.message || 'Could not revoke share link')
+    } finally {
+      setShareBusy(false)
+    }
+  }
+
+  function copyShareLink() {
+    const link = `${window.location.origin}/s/${shareToken}`
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(link)
+      toast.success('Link copied')
+    } else {
+      toast('Copy the link from the field below')
+    }
+  }
 
   const headers = { Authorization: `Bearer ${session.access_token}` }
 
@@ -265,6 +339,26 @@ export default function ReviewScreen() {
             >
               <span className="material-symbols-outlined text-[16px]">visibility</span>
               View Document
+            </button>
+            <button
+              onClick={exportToCalendar}
+              disabled={obligations.length === 0}
+              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2 disabled:opacity-40"
+              title="Export this grant's dated obligations to a calendar file"
+            >
+              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+              Export Calendar
+            </button>
+            <button
+              onClick={() => {
+                setShareOpen(true)
+                fetchShareToken()
+              }}
+              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
+              title="Generate a read-only summary link to share with your funder"
+            >
+              <span className="material-symbols-outlined text-[16px]">share</span>
+              Share with Funder
             </button>
             {pendingCount > 0 && (
               <button
@@ -606,6 +700,102 @@ export default function ReviewScreen() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 md:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share compliance summary"
+        >
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShareOpen(false)} />
+          <div className="relative w-full max-w-xl bg-surface-container-lowest inkwell-border notched-card shadow-2xl">
+            <div className="p-6 md:p-8">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined filled-icon text-primary">share</span>
+                  <h3 className="font-headline-lg-mobile text-headline-lg-mobile font-semibold text-on-surface">
+                    Share compliance summary
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShareOpen(false)}
+                  aria-label="Close share dialog"
+                  className="text-secondary hover:text-primary transition-colors p-1"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <p className="text-body-md text-on-surface-variant mb-6">
+                Share a <strong className="text-on-surface">read-only summary</strong> of this grant&apos;s
+                confirmed obligations with your funder. They will not need an account, and they will
+                not see the full agreement, clause excerpts, or any other grant.
+              </p>
+
+              {shareToken ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2">
+                    <span className="font-label-caps text-label-caps text-secondary uppercase">Share link</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/s/${shareToken}`}
+                        onFocus={(e) => e.target.select()}
+                        className="flex-1 min-w-0 bg-surface-container-high inkwell-border px-3 py-2 font-source-code text-source-code text-sm text-on-surface focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        onClick={copyShareLink}
+                        className="shrink-0 py-2 px-3 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <a
+                      href={`${window.location.origin}/s/${shareToken}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-label-caps text-label-caps text-primary hover:text-surface-tint uppercase self-start"
+                    >
+                      Open preview →
+                    </a>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 pt-2 border-t border-outline-variant">
+                    <button
+                      onClick={handleGenerateShare}
+                      disabled={shareBusy}
+                      className="py-2.5 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br disabled:opacity-60"
+                    >
+                      {shareBusy ? 'Working…' : 'Regenerate'}
+                    </button>
+                    <button
+                      onClick={handleRevokeShare}
+                      disabled={shareBusy}
+                      className="py-2.5 px-4 bg-error text-on-error font-label-caps text-label-caps tracking-wider uppercase hover:bg-alert-crimson transition-colors notched-br disabled:opacity-60"
+                    >
+                      {shareBusy ? 'Working…' : 'Revoke link'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-surface-container-high inkwell-border p-4 text-body-md text-on-surface-variant">
+                    No active share link. Generate one to send a read-only summary to your funder.
+                  </div>
+                  <button
+                    onClick={handleGenerateShare}
+                    disabled={shareBusy}
+                    className="w-full bg-primary text-on-primary py-3 font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-tint transition-colors notched-br flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <span className="material-symbols-outlined filled-icon text-[16px]">add_link</span>
+                    {shareBusy ? 'Generating…' : 'Generate share link'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

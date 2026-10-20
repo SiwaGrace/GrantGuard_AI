@@ -54,7 +54,7 @@ function parseObligations(raw) {
   })
 }
 
-async function callOpenRouter(text) {
+async function callGroq(text) {
   const body = {
     model: MODEL,
     messages: [
@@ -65,19 +65,17 @@ async function callOpenRouter(text) {
     max_tokens: 4096,
   }
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://grantguard.ai',
-      'X-Title': 'GrantGuard AI',
     },
     body: JSON.stringify(body),
   })
 
   if (res.status === 429 || res.status >= 500) {
-    const err = new Error(`OpenRouter returned ${res.status}`)
+    const err = new Error(`Groq returned ${res.status}`)
     err.retryable = true
     err.status = res.status
     throw err
@@ -85,13 +83,13 @@ async function callOpenRouter(text) {
 
   if (!res.ok) {
     const errBody = await res.text()
-    throw new Error(`OpenRouter error ${res.status}: ${errBody.slice(0, 300)}`)
+    throw new Error(`Groq error ${res.status}: ${errBody.slice(0, 300)}`)
   }
 
   const data = await res.json()
   const content = data.choices?.[0]?.message?.content
   if (!content) {
-    throw new Error('OpenRouter returned empty content')
+    throw new Error('Groq returned empty content')
   }
   return content
 }
@@ -102,13 +100,13 @@ export async function extractObligations(text) {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const raw = await callOpenRouter(text)
+      const raw = await callGroq(text)
       const obligations = parseObligations(raw)
       return obligations
     } catch (err) {
       lastError = err
       if (err.retryable && attempt < MAX_RETRIES) {
-        console.log(`OpenRouter retry ${attempt}/${MAX_RETRIES} (status ${err.status}), waiting ${backoff}ms`)
+        console.log(`Groq retry ${attempt}/${MAX_RETRIES} (status ${err.status}), waiting ${backoff}ms`)
         await new Promise((r) => setTimeout(r, backoff))
         backoff *= 2
         continue
