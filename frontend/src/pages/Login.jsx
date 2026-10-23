@@ -65,7 +65,7 @@ export default function Login() {
               Secure Your Compliance Vault
             </h1>
             <p className="text-body-sm text-body-sm text-secondary max-w-[280px] mx-auto">
-              Trusted by NGOs worldwide for traceable grant management.
+              Built for NGO grant compliance — every obligation traced to its source clause.
             </p>
           </div>
 
