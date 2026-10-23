@@ -33,7 +33,7 @@ function readSavedView() {
 const HEALTH = {
   'on track': { text: 'text-primary', icon: 'check_circle', filled: true },
   overdue: { text: 'text-alert-crimson', icon: 'schedule' },
-  'needs review': { text: 'text-warning-ochre', icon: 'radio_button_unchecked' },
+  'needs review': { text: 'text-warning-text', icon: 'radio_button_unchecked' },
   failed: { text: 'text-alert-crimson', icon: 'error' },
   'no obligations': { text: 'text-alert-crimson', icon: 'report' },
   processing: { text: 'text-on-surface-variant', icon: 'cloud_sync' },
@@ -365,8 +365,8 @@ export default function Dashboard() {
                 <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Due Soon ({DUE_SOON_DAYS}d)</p>
                 <div className="flex items-end gap-3">
-                  <span className="font-display-lg text-display-lg text-warning-ochre">{stats.dueSoon}</span>
-                  <span className="font-label-caps text-label-caps text-warning-ochre mb-1.5 flex items-center gap-1">
+                  <span className="font-display-lg text-display-lg text-warning-text">{stats.dueSoon}</span>
+                  <span className="font-label-caps text-label-caps text-warning-text mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">warning</span> Action required
                   </span>
                 </div>
@@ -376,8 +376,8 @@ export default function Dashboard() {
                 <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Clauses Flagged</p>
                 <div className="flex items-end gap-3">
-                  <span className="font-display-lg text-display-lg text-warning-ochre">{stats.lowConf}</span>
-                  <span className="font-label-caps text-label-caps text-warning-ochre mb-1.5 flex items-center gap-1">
+                  <span className="font-display-lg text-display-lg text-warning-text">{stats.lowConf}</span>
+                  <span className="font-label-caps text-label-caps text-warning-text mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">visibility</span> Needs review
                   </span>
                 </div>
@@ -405,7 +405,7 @@ export default function Dashboard() {
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">{o.type.replace('_', ' ')}</span>
-                        <span className={`font-label-caps text-label-caps ${o.daysLeft < 0 ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
+                        <span className={`font-label-caps text-label-caps ${o.daysLeft < 0 ? 'text-alert-crimson' : 'text-warning-text'}`}>
                           {o.daysLeft < 0
                             ? `OVERDUE · ${-o.daysLeft} DAY${o.daysLeft === -1 ? '' : 'S'}`
                             : o.daysLeft === 0
@@ -540,7 +540,7 @@ export default function Dashboard() {
                               g.nextDueOverdue || g.nextDueDueSoon ? 'bg-error-container border-l-2 border-l-alert-crimson' : 'bg-surface'
                             }`}
                           >
-                            <span className={`material-symbols-outlined text-[18px] mt-0.5 ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
+                            <span className={`material-symbols-outlined text-[18px] mt-0.5 ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson' : 'text-warning-text'}`}>
                               {g.nextDueOverdue ? 'schedule' : g.nextDueDueSoon ? 'warning' : 'event'}
                             </span>
                             <div>

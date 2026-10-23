@@ -55,6 +55,10 @@
   --color-inverse-on-surface: #eef1f4;
 
   --color-warning-ochre: #d4a373;
+  /* Text-safe variants (WCAG AA 4.5:1 on all light surfaces): the ochre
+     above is too light for text, and primary-container is a dark teal */
+  --color-warning-text: #875611;
+  --color-primary-tint: #d5f2f4;
   --color-alert-crimson: #9b2226;
   --color-safety-teal: #008080;
 

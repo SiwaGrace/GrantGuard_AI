@@ -17,7 +17,7 @@ const TYPE_LABELS = {
 const STATUS_META = {
   overdue: { label: 'Overdue', icon: 'schedule', color: 'text-alert-crimson', fill: false },
   flagged: { label: 'Flagged', icon: 'flag', color: 'text-alert-crimson', fill: true },
-  'needs review': { label: 'Needs Review', icon: 'radio_button_unchecked', color: 'text-warning-ochre', fill: false },
+  'needs review': { label: 'Needs Review', icon: 'radio_button_unchecked', color: 'text-warning-text', fill: false },
 }
 
 function rowStatus(obligation) {
@@ -165,7 +165,7 @@ export default function Alerts() {
               'Needs Review',
               counts.needsReview,
               filter === 'needs review',
-              'border-warning-ochre bg-warning-ochre/10 text-warning-ochre font-bold',
+              'border-warning-ochre bg-warning-ochre/10 text-warning-text font-bold',
             )}
           </div>
         </header>

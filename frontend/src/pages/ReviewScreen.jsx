@@ -17,9 +17,9 @@ const TYPE_LABELS = {
 }
 
 const TYPE_META = {
-  deadline: { icon: 'event', color: 'text-primary', bg: 'bg-primary-container' },
-  reporting: { icon: 'summarize', color: 'text-primary', bg: 'bg-primary-container' },
-  eligible_activity: { icon: 'checklist', color: 'text-warning-ochre', bg: 'bg-surface-container' },
+  deadline: { icon: 'event', color: 'text-primary', bg: 'bg-primary-tint' },
+  reporting: { icon: 'summarize', color: 'text-primary', bg: 'bg-primary-tint' },
+  eligible_activity: { icon: 'checklist', color: 'text-warning-text', bg: 'bg-surface-container' },
   compliance_condition: { icon: 'gavel', color: 'text-alert-crimson', bg: 'bg-error-container' },
 }
 
@@ -471,7 +471,7 @@ export default function ReviewScreen() {
             </span>
           )}
           {pendingCount > 0 && (
-            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-ochre uppercase bg-surface-container inkwell-border px-2 py-1">
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-text uppercase bg-surface-container inkwell-border px-2 py-1">
               <span className="material-symbols-outlined text-[14px]">visibility</span>
               {pendingCount} pending
             </span>
@@ -604,12 +604,12 @@ export default function ReviewScreen() {
                                     </span>
                                   )}
                                   {o.confidence === 'low' && o.verified && (
-                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-tint px-2 py-0.5 border border-outline-variant">
                                       verified
                                     </span>
                                   )}
                                   {isConfirmed && (
-                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-tint px-2 py-0.5 border border-outline-variant">
                                       approved
                                     </span>
                                   )}
