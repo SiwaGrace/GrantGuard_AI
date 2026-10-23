@@ -184,6 +184,35 @@ body {
   );
 }
 
+/* clip-path slices the border off along each cut, leaving the outline open
+   at the notch. On bordered elements, redraw that edge as a 1px diagonal:
+   a gradient sized to the cut corner whose 50% line is exactly the cut,
+   coloured for 1px on the inside of it. */
+.notched-card:is(.inkwell-border, .border),
+.notched-br:is(.inkwell-border, .border) {
+  --notch-line: var(--color-outline);
+  --notch-edge: transparent 50%, var(--notch-line) 50%, var(--notch-line) calc(50% + 1px),
+    transparent calc(50% + 1px);
+  background-origin: border-box;
+  background-repeat: no-repeat;
+}
+.notched-card.border-outline-variant,
+.notched-br.border-outline-variant {
+  --notch-line: var(--color-outline-variant);
+}
+.notched-card:is(.inkwell-border, .border) {
+  background-image:
+    linear-gradient(to bottom right, var(--notch-edge)),
+    linear-gradient(to top left, var(--notch-edge));
+  background-size: 10px 10px;
+  background-position: left top, right bottom;
+}
+.notched-br:is(.inkwell-border, .border) {
+  background-image: linear-gradient(to top left, var(--notch-edge));
+  background-size: 16px 16px;
+  background-position: right bottom;
+}
+
 /* Dashed clause connector (UI.md) */
 .dashed-clause-path {
   background-image: linear-gradient(
