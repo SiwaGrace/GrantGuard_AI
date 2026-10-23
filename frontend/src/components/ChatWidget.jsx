@@ -94,7 +94,7 @@ function Markdown({ text }) {
           const [head, ...rows] = block.items
           return (
             <div key={i} className="overflow-x-auto">
-              <table className="text-body-sm border-collapse">
+              <table className="text-[15px] border-collapse">
                 <thead>
                   <tr>
                     {head.map((cell, j) => (
@@ -149,7 +149,13 @@ export default function ChatWidget() {
   }, [messages, open])
 
   useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus()
+    if (!open) return
+    inputRef.current?.focus()
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
   useEffect(() => {
@@ -222,20 +228,24 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Floating launcher */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Close grant assistant' : 'Open grant assistant'}
-        className="fixed bottom-6 right-6 z-[100] w-14 h-14 rounded-full bg-primary text-on-primary shadow-xl flex items-center justify-center hover:bg-surface-tint transition-all notched-br"
-      >
-        <span className="material-symbols-outlined filled-icon text-[24px]">
-          {open ? 'close' : 'forum'}
-        </span>
-      </button>
+      {/* Floating launcher (hidden while the panel is open; the panel has its own close button) */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Open grant assistant"
+          className="fixed bottom-6 right-6 z-[100] w-14 h-14 rounded-full bg-primary text-on-primary shadow-xl flex items-center justify-center hover:bg-surface-tint transition-all notched-br"
+        >
+          <span className="material-symbols-outlined filled-icon text-[24px]">forum</span>
+        </button>
+      )}
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed inset-y-0 right-0 z-[90] w-full max-w-md bg-surface-container-lowest border-l border-outline-variant flex flex-col shadow-2xl">
+        <div
+          role="dialog"
+          aria-label="Ask GrantGuard"
+          className="fixed z-[90] inset-x-0 top-16 bottom-0 md:inset-x-auto md:top-auto md:right-6 md:bottom-6 md:w-[420px] md:h-[min(640px,calc(100vh-8rem))] bg-surface-container-lowest inkwell-border flex flex-col shadow-2xl"
+        >
           {/* Header */}
           <div className="flex items-center justify-between gap-3 px-5 py-4 inkwell-border-b bg-surface-container-low">
             <div className="flex items-center gap-3 min-w-0">
@@ -274,7 +284,7 @@ export default function ChatWidget() {
                     <button
                       key={s}
                       onClick={() => send(s, true)}
-                      className="text-left text-body-sm text-primary bg-surface-container-high inkwell-border notched-card px-4 py-3 hover:bg-surface-container transition-colors"
+                      className="text-left text-[15px] leading-snug text-primary bg-surface-container-high inkwell-border notched-card px-4 py-3 hover:bg-surface-container transition-colors"
                     >
                       {s}
                     </button>
@@ -288,9 +298,13 @@ export default function ChatWidget() {
                     <div key={i} className="flex justify-start">
                       <div className="bg-surface-container-high inkwell-border notched-card px-4 py-3 max-w-[88%] text-body-md text-on-surface">
                         {m.pending ? (
-                          <span className="inline-flex items-center gap-2 text-on-surface-variant">
-                            <span className="w-4 h-4 border-2 border-outline-variant border-t-primary rounded-full animate-spin" />
-                            Thinking…
+                          <span role="status" className="inline-flex items-center gap-2 text-on-surface-variant">
+                            <span className="inline-flex gap-1" aria-hidden="true">
+                              <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
+                              <span className="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
+                              <span className="w-2 h-2 rounded-full bg-primary animate-bounce" />
+                            </span>
+                            GrantGuard is thinking…
                           </span>
                         ) : m.error ? (
                           <p role="alert" className="text-alert-crimson">{m.error}</p>
@@ -319,35 +333,42 @@ export default function ChatWidget() {
                 e.preventDefault()
                 send()
               }}
-              className="flex items-end gap-2"
+              className="flex items-end gap-2 inkwell-border bg-surface-container-lowest focus-within:border-primary focus-within:ring-1 focus-within:ring-primary pl-3 pr-1.5 py-1.5 transition-colors"
             >
+              <label htmlFor="chat-input" className="sr-only">
+                Ask about your grants
+              </label>
               <textarea
+                id="chat-input"
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                rows={1}
+                rows={2}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     send()
                   }
                 }}
+                // The surrounding box shows focus; the global :focus-visible outline would double it
+                style={{ outline: 'none' }}
                 placeholder="Ask about your grants…"
-                className="flex-1 resize-none bg-transparent border-0 border-b border-outline focus:border-primary focus:outline-none px-1 py-2 font-source-code text-source-code text-on-surface placeholder:text-on-surface-variant/60"
+                className="flex-1 resize-none bg-transparent border-0 py-1.5 text-[16px] leading-snug text-on-surface placeholder:text-on-surface-variant/70"
               />
               <button
                 type="submit"
                 disabled={sending || !input.trim()}
-                aria-label="Send message"
-                className="w-11 h-11 shrink-0 rounded bg-primary text-on-primary flex items-center justify-center hover:bg-surface-tint transition-colors disabled:opacity-40 notched-br"
+                className="shrink-0 h-10 px-3 bg-primary text-on-primary flex items-center gap-1.5 font-label-caps text-label-caps uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-40 notched-br"
               >
-                <span className="material-symbols-outlined filled-icon">arrow_upward</span>
+                {sending ? 'Sending…' : 'Send'}
+                <span className="material-symbols-outlined filled-icon text-[18px]">send</span>
               </button>
             </form>
-            <div className="flex justify-end mt-1">
+            <div className="flex items-center justify-between gap-2 mt-1.5">
+              <p className="text-[13px] text-secondary">Enter sends · Shift+Enter: new line</p>
               <button
                 onClick={clearChat}
-                className="font-label-caps text-[12px] text-secondary uppercase hover:text-primary transition-colors"
+                className="shrink-0 whitespace-nowrap font-label-caps text-[12px] text-secondary uppercase hover:text-primary transition-colors"
               >
                 Clear conversation
               </button>
