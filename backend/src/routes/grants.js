@@ -384,6 +384,14 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     updates.completed_at = req.body.completed ? new Date().toISOString() : null
   }
 
+  // Approve (or un-approve) a single extraction
+  if (req.body.status !== undefined) {
+    if (!['pending_review', 'confirmed'].includes(req.body.status)) {
+      return res.status(400).json({ error: 'Invalid status' })
+    }
+    updates.status = req.body.status
+  }
+
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No valid fields to update' })
   }

@@ -42,6 +42,7 @@ export default function ReviewScreen() {
   const [confirming, setConfirming] = useState(false)
   const [verifyingId, setVerifyingId] = useState(null)
   const [completingId, setCompletingId] = useState(null)
+  const [approvingId, setApprovingId] = useState(null)
 
   const [detail, setDetail] = useState(null)
   const [showDocument, setShowDocument] = useState(false)
@@ -223,16 +224,37 @@ export default function ReviewScreen() {
         { method: 'POST', headers }
       )
       const payload = await readJson(res)
-      if (!res.ok) throw new Error(payload.error || 'Confirm failed')
+      if (!res.ok) throw new Error(payload.error || 'Approve failed')
 
       setObligations((prev) =>
         prev.map((o) => (o.status === 'pending_review' ? { ...o, status: 'confirmed' } : o))
       )
-      toast.success('All obligations confirmed — tracking is active')
+      const n = payload.confirmed ?? pendingCount
+      toast.success(`${n} obligation${n === 1 ? '' : 's'} approved. Their deadlines are now tracked.`)
     } catch (err) {
-      toast.error(err.message || 'Could not confirm obligations')
+      toast.error(err.message || 'Could not approve the obligations')
     } finally {
       setConfirming(false)
+    }
+  }
+
+  // Approve a single extraction (same as Approve all, for one obligation)
+  async function handleApprove(obligationId) {
+    setApprovingId(obligationId)
+    try {
+      const res = await apiFetch(`/api/grants/${grantId}/obligations/${obligationId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'confirmed' }),
+      })
+      const payload = await readJson(res)
+      if (!res.ok) throw new Error(payload.error || 'Approve failed')
+      setObligations((prev) => prev.map((o) => (o.id === obligationId ? { ...o, status: 'confirmed' } : o)))
+      toast.success('Obligation approved and tracked')
+    } catch (err) {
+      toast.error(err.message || 'Could not approve the obligation')
+    } finally {
+      setApprovingId(null)
     }
   }
 
@@ -414,12 +436,12 @@ export default function ReviewScreen() {
               <button
                 onClick={confirmAll}
                 disabled={confirming}
+                title="Confirm the AI's extractions are correct and start tracking deadlines."
+                aria-describedby="approve-all-help"
                 className="bg-primary text-on-primary py-3 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br disabled:opacity-60 flex items-center gap-2"
               >
                 <span className="material-symbols-outlined filled-icon text-[16px]">check_circle</span>
-                {confirming
-                  ? 'CONFIRMING…'
-                  : `CONFIRM & TRACK (${pendingCount})`}
+                {confirming ? 'APPROVING…' : `APPROVE ALL (${pendingCount})`}
               </button>
             )}
             <button
@@ -431,6 +453,13 @@ export default function ReviewScreen() {
             </button>
           </div>
         </header>
+
+        {pendingCount > 0 && (
+          <p id="approve-all-help" className="-mt-4 text-body-sm text-secondary">
+            <span className="font-medium text-on-surface">Approve all</span> confirms the AI&apos;s extractions are
+            correct and starts tracking deadlines. You can also approve or edit each obligation below.
+          </p>
+        )}
 
         {/* Summary line */}
         <p className="text-body-md text-on-surface-variant flex items-center gap-3 flex-wrap">
@@ -581,7 +610,7 @@ export default function ReviewScreen() {
                                   )}
                                   {isConfirmed && (
                                     <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
-                                      confirmed
+                                      approved
                                     </span>
                                   )}
                                   {o.source_page && (
@@ -620,13 +649,25 @@ export default function ReviewScreen() {
                                   Source
                                 </button>
                                 {o.status === 'pending_review' && (
-                                  <button
-                                    onClick={() => startEdit(o)}
-                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">edit</span>
-                                    Edit
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleApprove(o.id)}
+                                      disabled={approvingId === o.id}
+                                      title="This extraction is correct: start tracking it"
+                                      className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                    >
+                                      <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
+                                      {approvingId === o.id ? 'Approving…' : 'Approve'}
+                                    </button>
+                                    <button
+                                      onClick={() => startEdit(o)}
+                                      title="Fix the AI's extraction before approving"
+                                      className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">edit</span>
+                                      Edit
+                                    </button>
+                                  </>
                                 )}
                                 {flagged && (
                                   <button
@@ -682,7 +723,7 @@ export default function ReviewScreen() {
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-alert-crimson text-[20px]">flag</span>
                   <span className="font-label-caps text-label-caps text-alert-crimson uppercase tracking-widest">
-                    {detail.status === 'confirmed' ? 'Confirmed' : isFlagged(detail) ? 'Flagged' : 'Needs Review'}
+                    {detail.status === 'confirmed' ? 'Approved' : isFlagged(detail) ? 'Flagged' : 'Needs Review'}
                   </span>
                 </div>
                 <div className="bg-surface-dim px-2 py-1 flex items-center gap-2 inkwell-border">
