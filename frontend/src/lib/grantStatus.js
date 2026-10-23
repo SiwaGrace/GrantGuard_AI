@@ -1,4 +1,4 @@
-// Overall health of a grant, shared by the Dashboard and Portfolio pages.
+// Overall health of a grant, shown on the Dashboard (table and cards views).
 //   processing     – no finished document yet
 //   failed         – the PDF or the AI extraction failed (Retry is offered)
 //   no obligations – extraction finished but nothing was saved (Retry is offered)

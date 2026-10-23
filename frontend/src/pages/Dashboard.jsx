@@ -10,6 +10,15 @@ import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
 import { canRetryExtraction, grantStatus, isFlagged } from '../lib/grantStatus'
 
 const DUE_SOON_DAYS = 14
+const VIEW_STORAGE_KEY = 'grantguard:grant-list-view'
+
+function readSavedView() {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === 'cards' ? 'cards' : 'table'
+  } catch {
+    return 'table'
+  }
+}
 
 const HEALTH = {
   'on track': { text: 'text-primary', icon: 'check_circle', filled: true },
@@ -43,6 +52,16 @@ export default function Dashboard() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [retryingId, setRetryingId] = useState(null)
   const [viewDocGrant, setViewDocGrant] = useState(null)
+  const [view, setView] = useState(readSavedView)
+
+  function changeView(next) {
+    setView(next)
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      // Storage unavailable (private mode etc.): the choice just isn't remembered
+    }
+  }
 
   function openUploadModal() {
     window.dispatchEvent(new Event('grantguard:open-upload'))
@@ -416,15 +435,137 @@ export default function Dashboard() {
               </section>
             )}
 
-            {/* Agreements ledger */}
+            {/* Grant list: table or cards */}
             <section>
-              <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
-                Your grants
-              </h3>
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <h3 className="font-label-caps text-label-caps text-secondary uppercase tracking-widest">
+                  Your grants
+                </h3>
+                <div className="flex inkwell-border" role="group" aria-label="Grant list layout">
+                  {[
+                    ['table', 'table_rows', 'Table'],
+                    ['cards', 'grid_view', 'Cards'],
+                  ].map(([value, icon, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => changeView(value)}
+                      aria-pressed={view === value}
+                      className={`px-3 py-1.5 flex items-center gap-1.5 font-label-caps text-label-caps uppercase transition-colors ${
+                        view === value
+                          ? 'bg-primary text-on-primary'
+                          : 'text-secondary hover:bg-surface-container'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">{icon}</span>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {visibleGrants.length === 0 ? (
                 <p className="text-body-md text-on-surface-variant bg-surface-container-lowest inkwell-border p-6">
                   No grants match &ldquo;{query}&rdquo;.
                 </p>
+              ) : view === 'cards' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {visibleGrants.map((g) => {
+                    const badge = grantStatus(g)
+                    const health = HEALTH[badge] || HEALTH.processing
+                    const openReview = () =>
+                      navigate(`/grants/${g.id}/review`, { state: { grantName: g.name } })
+                    return (
+                      <div
+                        key={g.id}
+                        className="bg-surface-container-lowest inkwell-border notched-card p-6 flex flex-col hover:bg-surface-container-low transition-colors"
+                      >
+                        <div className="flex justify-between items-start mb-6">
+                          <span className="bg-surface-container text-on-surface font-source-code text-source-code px-2 py-1 inkwell-border">
+                            § G-{shortId(g.grant_id || g.id)}
+                          </span>
+                          <div className={`flex items-center gap-2 ${health.text}`}>
+                            <span className={`material-symbols-outlined text-[16px] ${health.filled ? 'filled-icon' : ''}`}>
+                              {health.icon}
+                            </span>
+                            <span className="font-label-caps text-label-caps uppercase">{badge}</span>
+                          </div>
+                        </div>
+
+                        <button onClick={openReview} className="text-left group">
+                          <h4 className="font-headline-lg-mobile text-headline-lg-mobile text-on-surface mb-2 group-hover:text-primary transition-colors">
+                            {g.name}
+                          </h4>
+                        </button>
+                        <p className="font-label-caps text-label-caps text-secondary mb-6 uppercase">
+                          {g.funder_name || '—'}
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-4 mb-6 mt-auto">
+                          <div className="flex flex-col">
+                            <span className="font-label-caps text-label-caps text-secondary mb-1 uppercase">Obligations</span>
+                            <span className="text-body-md text-on-surface font-medium">{g.obligationCount}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-label-caps text-label-caps text-secondary mb-1 uppercase">Added</span>
+                            <span className="text-body-md text-on-surface font-medium">
+                              {new Date(g.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                            </span>
+                          </div>
+                        </div>
+
+                        {g.nextDue && (
+                          <div
+                            className={`p-3 mb-6 inkwell-border flex items-start gap-3 ${
+                              g.nextDueDueSoon ? 'bg-error-container border-l-2 border-l-alert-crimson' : 'bg-surface'
+                            }`}
+                          >
+                            <span className={`material-symbols-outlined text-[18px] mt-0.5 ${g.nextDueDueSoon ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
+                              {g.nextDueDueSoon ? 'warning' : 'event'}
+                            </span>
+                            <div>
+                              <span className="font-label-caps text-label-caps text-on-surface block mb-1 uppercase">
+                                Next Deadline
+                              </span>
+                              <span className={`text-body-sm ${g.nextDueDueSoon ? 'text-alert-crimson font-medium' : 'text-secondary'}`}>
+                                {g.nextDue.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                                {g.nextDueDueSoon && ' — due soon'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="inkwell-border-t pt-4 flex flex-wrap justify-between items-center gap-3 mt-auto">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setViewDocGrant(g)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">visibility</span>
+                              Document
+                            </button>
+                            {canRetryExtraction(badge) && (
+                              <button
+                                disabled={retryingId === g.id}
+                                onClick={(e) => handleRetryExtraction(e, g.id)}
+                                className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors"
+                              >
+                                {retryingId === g.id ? '…' : 'Retry'}
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            onClick={openReview}
+                            className="flex items-center gap-2 text-secondary hover:text-primary transition-colors"
+                          >
+                            <span className="font-label-caps text-label-caps uppercase">
+                              {g.pendingCount > 0 ? `${g.pendingCount} pending review` : 'View obligations'}
+                            </span>
+                            <span className="material-symbols-outlined">arrow_forward</span>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               ) : (
                 <div className="bg-surface-container-lowest inkwell-border">
                   {/* Table header */}

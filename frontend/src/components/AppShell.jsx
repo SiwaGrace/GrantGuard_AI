@@ -78,7 +78,6 @@ export default function AppShell({ children }) {
       )}
 
       <nav className="flex-1 space-y-2">
-        <NavItem to="/portfolio" icon="folder_shared" label="Portfolio" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/" icon="dashboard" label="Dashboard" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/alerts" icon="notification_important" label="Alerts" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/settings" icon="settings" label="Settings" onClick={() => setDrawerOpen(false)} />

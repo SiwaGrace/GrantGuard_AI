@@ -295,7 +295,7 @@ export default function ReviewScreen() {
               onClick={() => navigate('/')}
               className="py-2.5 px-5 border border-outline text-primary font-label-caps text-label-caps tracking-wider hover:bg-surface-container transition-colors notched-br"
             >
-              BACK TO PORTFOLIO
+              BACK TO DASHBOARD
             </button>
           </div>
         </div>
@@ -309,7 +309,7 @@ export default function ReviewScreen() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
           <button onClick={() => navigate('/')} className="hover:text-primary transition-colors">
-            Portfolio
+            Dashboard
           </button>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
           <span className="text-primary">{grantName || 'Grant'}</span>
@@ -384,7 +384,7 @@ export default function ReviewScreen() {
               className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Portfolio
+              Dashboard
             </button>
           </div>
         </header>
