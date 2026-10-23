@@ -8,7 +8,10 @@ const SYSTEM_PROMPT = `You are a grant compliance analyst. Given the text of a g
 
 The text is split into pages. Each page starts with a marker line of the form "--- Page N ---".
 
-Return a JSON object of the form {"obligations": [ ... ]}. Each obligation must have exactly these fields:
+Return a JSON object of the form {"grant_number": ..., "funder_name": ..., "obligations": [ ... ]}:
+- grant_number: the agreement's own grant / agreement / award / reference number exactly as written (e.g. "GD-2026-WASH-0417"), or null if the document doesn't state one. Never invent one.
+- funder_name: the name of the funding organisation (the funder/donor/grantor), or null if unclear.
+- obligations: an array where each obligation has exactly these fields:
 - type: one of "deadline", "reporting", "eligible_activity", "compliance_condition"
 - description: a clear, concise summary of the obligation (1-2 sentences)
 - due_date: the due date in ISO 8601 format (YYYY-MM-DD) if a specific date is stated, otherwise null
@@ -22,7 +25,7 @@ Rules:
 3. Reporting: any duty to submit reports, updates, audits, or financial statements.
 4. Eligible activities: any restriction on what funds may/may not be used for.
 5. Compliance conditions: any regulatory, legal, procurement, or policy requirements.
-6. If the text contains no obligations at all, return {"obligations": []}.
+6. If the text contains no obligations at all, return an empty "obligations" array.
 7. Do NOT invent obligations not present in the text.`
 
 function maxExtractChars() {
@@ -129,7 +132,7 @@ export async function extractObligations(text, { pageCount = null, retries = 3 }
         throw new Error('Groq returned empty content')
       }
 
-      return parseObligations(raw, pageCount)
+      return parseExtraction(raw, pageCount)
     } catch (err) {
       lastError = err
       if (attempt < retries && isRetryable(err)) {
@@ -192,9 +195,28 @@ function normalizePage(value, pageCount) {
   return n
 }
 
-export function parseObligations(raw, pageCount = null) {
-  const parsed = parseJson(raw)
+function cleanText(value, maxLength) {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  return text && text.length <= maxLength && !/^(null|n\/a|none|unknown)$/i.test(text) ? text : null
+}
 
+// Returns { obligations, grantNumber, funderName } from the model's JSON
+export function parseExtraction(raw, pageCount = null) {
+  const parsed = parseJson(raw)
+  const details = parsed && !Array.isArray(parsed) && typeof parsed === 'object' ? parsed : {}
+  return {
+    obligations: normalizeObligations(parsed, pageCount),
+    grantNumber: cleanText(details.grant_number, 60),
+    funderName: cleanText(details.funder_name, 200),
+  }
+}
+
+export function parseObligations(raw, pageCount = null) {
+  return normalizeObligations(parseJson(raw), pageCount)
+}
+
+function normalizeObligations(parsed, pageCount) {
   // Expected shape is {"obligations": [...]}; also accept a bare array or an
   // object whose only array property holds the obligations.
   let list = null

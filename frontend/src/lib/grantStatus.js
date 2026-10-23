@@ -55,3 +55,10 @@ export function isDueSoon(obligation, today = todayISO()) {
   if (!obligation.due_date || isCompleted(obligation)) return false
   return obligation.due_date >= today && obligation.due_date <= addDaysISO(today, DUE_SOON_DAYS)
 }
+
+// The agreement's own reference number when it was found in the document
+// (e.g. GD-2026-WASH-0417); otherwise a short internal ID
+export function grantReference(grant) {
+  if (grant?.grant_number) return grant.grant_number
+  return `G-${String(grant?.id || '').replace(/-/g, '').slice(0, 7).toUpperCase()}`
+}

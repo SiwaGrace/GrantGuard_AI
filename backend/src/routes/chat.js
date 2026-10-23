@@ -27,6 +27,7 @@ function buildSnapshot(grants, obligationsByGrant) {
       id: g.id,
       name: g.name,
       funder: g.funder_name || null,
+      grant_number: g.grant_number || null,
       uploaded: g.created_at ? g.created_at.slice(0, 10) : null,
       obligations: obs.map((o) => ({
         type: o.type,
@@ -111,7 +112,7 @@ router.post('/chat', requireAuth, async (req, res) => {
   try {
     const { data: grants, error: grantErr } = await supabaseAdmin
       .from('grants')
-      .select('id, name, funder_name, created_at')
+      .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
 

@@ -45,22 +45,47 @@ async function extractPdfText(buffer, { maxPages = Infinity } = {}) {
   return { numPages, pageTexts, text: pageTexts.join('\n\n') }
 }
 
+// Stores the agreement's own reference number. Non-fatal, so uploads keep
+// working on databases that haven't run migrations/006_grant_number.sql.
+async function saveGrantNumber(grantId, grantNumber) {
+  if (!grantNumber) return null
+  const { error } = await supabaseAdmin.from('grants').update({ grant_number: grantNumber }).eq('id', grantId)
+  if (error) {
+    console.warn(`[grant_number] Not saved (run migrations/006_grant_number.sql?): ${error.message}`)
+    return null
+  }
+  return grantNumber
+}
+
 // Runs the LLM over the page texts, saves the obligations, and records the
 // outcome on the document row: "extracted" on success, "failed" when the AI
 // call or the save fails or nothing was found (so the dashboard offers Retry).
 // With replaceExisting, the grant's previous obligations are removed only
 // after the new ones are saved, so a failed retry never loses data.
-async function runObligationExtraction({ grantId, documentId, pageTexts, pages, label, replaceExisting = false }) {
+// The grant number is taken from the AI, then the form's hint, then a
+// pattern match on the first pages.
+async function runObligationExtraction({
+  grantId,
+  documentId,
+  pageTexts,
+  pages,
+  label,
+  replaceExisting = false,
+  fallbackGrantNumber = null,
+}) {
   const paged = buildPagedText(pageTexts)
   let obligations = []
   let obligationError = null
+  let details = { grantNumber: null, funderName: null }
 
   console.log(
     `[${label}] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${grantId}"`,
   )
   try {
-    obligations = await extractObligations(paged.text, { pageCount: pages })
-    console.log(`[${label}] LLM returned ${obligations.length} obligations`)
+    const result = await extractObligations(paged.text, { pageCount: pages })
+    obligations = result.obligations
+    details = { grantNumber: result.grantNumber, funderName: result.funderName }
+    console.log(`[${label}] LLM returned ${obligations.length} obligations (grant number: ${details.grantNumber || 'none'})`)
   } catch (llmError) {
     console.error(`[${label}] LLM extraction failed:`, llmError.message)
     obligationError = `AI extraction failed: ${llmError.message}`
@@ -111,7 +136,19 @@ async function runObligationExtraction({ grantId, documentId, pageTexts, pages, 
   const documentStatus = obligationError ? 'failed' : 'extracted'
   await supabaseAdmin.from('documents').update({ extraction_status: documentStatus }).eq('id', documentId)
 
-  return { obligations, obligationError, truncated: paged.truncated, documentStatus }
+  const grantNumber = await saveGrantNumber(
+    grantId,
+    details.grantNumber || fallbackGrantNumber || findDocumentHints(pageTexts.slice(0, 2).join(' ')).grant_number,
+  )
+
+  return {
+    obligations,
+    obligationError,
+    truncated: paged.truncated,
+    documentStatus,
+    grantNumber,
+    funderName: details.funderName,
+  }
 }
 
 function friendlyUploadError(err) {
@@ -220,6 +257,7 @@ async function createGrant(req, res) {
   let obligations = []
   let obligationError = null
   let truncated = false
+  let detectedFunder = null
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
     const result = await runObligationExtraction({
@@ -228,17 +266,29 @@ async function createGrant(req, res) {
       pageTexts,
       pages,
       label: 'extract',
+      fallbackGrantNumber: (req.body.grant_number || '').trim().slice(0, 60) || null,
     })
     obligations = result.obligations
     obligationError = result.obligationError
     truncated = result.truncated
     document.extraction_status = result.documentStatus
+    if (result.grantNumber) grant.grant_number = result.grantNumber
+    detectedFunder = result.funderName
   }
 
   res.status(201).json({
     grant,
     document,
-    extraction: { status: extractionStatus, pages, characters, preview, truncated, error: extractionError },
+    extraction: {
+      status: extractionStatus,
+      pages,
+      characters,
+      preview,
+      truncated,
+      error: extractionError,
+      grant_number: grant.grant_number || null,
+      funder_name: detectedFunder,
+    },
     obligations,
     obligationError,
   })
@@ -456,7 +506,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
     return res.status(500).json({ error: `PDF parsing failed: ${parseError.message}` })
   }
 
-  const { obligations, obligationError, truncated } = await runObligationExtraction({
+  const { obligations, obligationError, truncated, grantNumber } = await runObligationExtraction({
     grantId: grant.id,
     documentId: doc.id,
     pageTexts,
@@ -466,7 +516,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
   })
 
   res.json({
-    extraction: { status: extractionStatus, pages, characters, truncated },
+    extraction: { status: extractionStatus, pages, characters, truncated, grant_number: grantNumber },
     obligations,
     obligationError,
   })

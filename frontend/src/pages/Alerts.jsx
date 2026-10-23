@@ -3,16 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import AppShell from '../components/AppShell'
-import { daysUntil, isFlagged, isOverdue, todayISO } from '../lib/grantStatus'
+import { daysUntil, grantReference, isFlagged, isOverdue, todayISO } from '../lib/grantStatus'
 
 const PAGE_SIZE = 10
-
-function shortId(id) {
-  return String(id || '')
-    .replace(/-/g, '')
-    .slice(0, 7)
-    .toUpperCase()
-}
 
 const TYPE_LABELS = {
   deadline: 'Deadline',
@@ -47,7 +40,7 @@ export default function Alerts() {
 
     const { data: grantsData } = await supabase
       .from('grants')
-      .select('id, name, funder_name')
+      .select('*')
       .eq('user_id', user.id)
 
     const grantList = grantsData || []
@@ -72,7 +65,7 @@ export default function Alerts() {
           ...o,
           grantName: grant?.name || 'Unknown grant',
           funderName: grant?.funder_name || '',
-          grantShort: shortId(grant?.id || o.grant_id),
+          grantRef: grantReference(grant || { id: o.grant_id }),
         }
       })
       .sort((a, b) => {
@@ -222,7 +215,7 @@ export default function Alerts() {
                       <div className="col-span-3 flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="font-source-code text-source-code text-secondary px-1.5 py-0.5 bg-surface-variant rounded-sm border border-outline-variant/50">
-                            G-{o.grantShort} · {typeLabel}
+                            {o.grantRef} · {typeLabel}
                           </span>
                         </div>
                         <span className="text-body-md text-body-md font-semibold text-on-surface">

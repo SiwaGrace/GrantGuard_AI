@@ -6,7 +6,8 @@ import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
-import { daysUntil, isCompleted, isDueSoon, isFlagged, isOverdue } from '../lib/grantStatus'
+import { daysUntil, grantReference, isCompleted, isDueSoon, isFlagged, isOverdue } from '../lib/grantStatus'
+import { supabase } from '../lib/supabase'
 
 const TYPE_LABELS = {
   deadline: 'Deadline',
@@ -29,7 +30,9 @@ export default function ReviewScreen() {
 
   const [loading, setLoading] = useState(true)
   const [obligations, setObligations] = useState([])
-  const [grantName, setGrantName] = useState('')
+  const [grant, setGrant] = useState(null)
+  // Name passed from the previous page shows instantly; the loaded row wins
+  const grantName = grant?.name || window.history.state?.usr?.grantName || ''
   const [error, setError] = useState('')
 
   const [editingId, setEditingId] = useState(null)
@@ -142,10 +145,19 @@ export default function ReviewScreen() {
     return () => { active = false }
   }, [grantId, session.access_token])
 
+  // Grant details (name, funder, reference number), read directly under RLS
   useEffect(() => {
-    const state = window.history.state?.usr
-    if (state?.grantName) setGrantName(state.grantName)
-  }, [])
+    let active = true
+    supabase
+      .from('grants')
+      .select('*')
+      .eq('id', grantId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data) setGrant(data)
+      })
+    return () => { active = false }
+  }, [grantId])
 
   useEffect(() => {
     if (!detail) return
@@ -360,6 +372,14 @@ export default function ReviewScreen() {
             </div>
             <p className="text-body-md text-on-surface-variant mt-1">
               {grantName || 'Grant agreement'}
+              {grant && (
+                <>
+                  {grant.funder_name && <span> · {grant.funder_name}</span>}
+                  <span className="ml-2 font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm text-on-surface-variant">
+                    {grantReference(grant)}
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 flex-wrap">

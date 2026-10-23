@@ -11,6 +11,7 @@ import {
   DUE_SOON_DAYS,
   canRetryExtraction,
   daysUntil,
+  grantReference,
   grantStatus,
   isCompleted,
   isDueSoon,
@@ -36,13 +37,6 @@ const HEALTH = {
   failed: { text: 'text-alert-crimson', icon: 'error' },
   'no obligations': { text: 'text-alert-crimson', icon: 'report' },
   processing: { text: 'text-on-surface-variant', icon: 'cloud_sync' },
-}
-
-function shortId(id) {
-  return String(id || '')
-    .replace(/-/g, '')
-    .slice(0, 7)
-    .toUpperCase()
 }
 
 export default function Dashboard() {
@@ -508,7 +502,7 @@ export default function Dashboard() {
                       >
                         <div className="flex justify-between items-start mb-6">
                           <span className="bg-surface-container text-on-surface font-source-code text-source-code px-2 py-1 inkwell-border">
-                            § G-{shortId(g.grant_id || g.id)}
+                            § {grantReference(g)}
                           </span>
                           <div className={`flex items-center gap-2 ${health.text}`}>
                             <span className={`material-symbols-outlined text-[16px] ${health.filled ? 'filled-icon' : ''}`}>
@@ -619,7 +613,7 @@ export default function Dashboard() {
                             className="col-span-4 text-left group"
                           >
                             <span className="font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm mr-2 text-on-surface-variant">
-                              G-{shortId(g.grant_id || g.id)}
+                              {grantReference(g)}
                             </span>
                             <span className="text-body-sm text-body-sm text-on-surface group-hover:text-primary transition-colors">
                               {g.name}
