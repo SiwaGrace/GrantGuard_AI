@@ -8,7 +8,7 @@ import {
   MAX_FILE_BYTES,
 } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
-import { extractObligations } from '../lib/groq.js'
+import { buildPagedText, extractObligations } from '../lib/groq.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -40,7 +40,7 @@ async function extractPdfText(buffer) {
     const strings = content.items.map((item) => item.str)
     pageTexts.push(strings.join(' '))
   }
-  return { numPages, text: pageTexts.join('\n\n') }
+  return { numPages, pageTexts, text: pageTexts.join('\n\n') }
 }
 
 function friendlyUploadError(err) {
@@ -94,10 +94,12 @@ async function createGrant(req, res) {
   let characters = null
   let preview = ''
   let extractedText = ''
+  let pageTexts = []
 
   try {
     const parsed = await extractPdfText(file.buffer)
     extractedText = parsed.text
+    pageTexts = parsed.pageTexts
     pages = parsed.numPages
     characters = parsed.text.length
     preview = parsed.text.replace(/\s+/g, ' ').trim().slice(0, 500)
@@ -144,11 +146,16 @@ async function createGrant(req, res) {
   // Step 2: If text extraction succeeded, run LLM obligation extraction
   let obligations = []
   let obligationError = null
+  let truncated = false
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    console.log(`[extract] Sending ${extractedText.length} chars to LLM for grant "${name}"`)
+    const paged = buildPagedText(pageTexts)
+    truncated = paged.truncated
+    console.log(
+      `[extract] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${name}"`,
+    )
     try {
-      obligations = await extractObligations(extractedText)
+      obligations = await extractObligations(paged.text, { pageCount: pages })
       console.log(`[extract] LLM returned ${obligations.length} obligations`)
     } catch (llmError) {
       console.error('[extract] LLM extraction failed:', llmError.message)
@@ -185,7 +192,7 @@ async function createGrant(req, res) {
   res.status(201).json({
     grant,
     document,
-    extraction: { status: extractionStatus, pages, characters, preview, error: extractionError },
+    extraction: { status: extractionStatus, pages, characters, preview, truncated, error: extractionError },
     obligations,
     obligationError,
   })
@@ -350,6 +357,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
 
   const buffer = Buffer.from(await fileData.arrayBuffer())
   let extractedText = ''
+  let pageTexts = []
   let extractionStatus = 'failed'
   let pages = null
   let characters = null
@@ -357,6 +365,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
   try {
     const parsed = await extractPdfText(buffer)
     extractedText = parsed.text
+    pageTexts = parsed.pageTexts
     pages = parsed.numPages
     characters = parsed.text.length
     const trimmedText = extractedText.replace(/\s+/g, '').trim()
@@ -376,11 +385,16 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
 
   let obligations = []
   let obligationError = null
+  let truncated = false
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    console.log(`[retry] Sending ${extractedText.length} chars to LLM for grant "${grantId}"`)
+    const paged = buildPagedText(pageTexts)
+    truncated = paged.truncated
+    console.log(
+      `[retry] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${grantId}"`,
+    )
     try {
-      obligations = await extractObligations(extractedText)
+      obligations = await extractObligations(paged.text, { pageCount: pages })
       console.log(`[retry] LLM returned ${obligations.length} obligations`)
     } catch (llmError) {
       console.error('[retry] LLM extraction failed:', llmError.message)
@@ -414,7 +428,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
   }
 
   res.json({
-    extraction: { status: extractionStatus, pages, characters },
+    extraction: { status: extractionStatus, pages, characters, truncated },
     obligations,
     obligationError,
   })

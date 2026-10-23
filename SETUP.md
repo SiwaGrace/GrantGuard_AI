@@ -72,6 +72,7 @@ Copy-Item frontend\.env.example frontend\.env
 | `GROQ_API_KEY` | Your Groq key from step 5 |
 | `MODEL` | Groq model for extraction. Leave it as `openai/gpt-oss-120b` |
 | `CHAT_MODEL` | *(optional)* A different Groq model for the chat assistant. Falls back to `MODEL` |
+| `MAX_EXTRACT_CHARS` | *(optional)* How many characters of a PDF are sent to the AI, cut at a page boundary. Default `40000` (about 10k tokens). Lower it if Groq returns "request too large" |
 | `PORT` | `4000` |
 | `CORS_ORIGIN` | `http://localhost:5173` |
 
