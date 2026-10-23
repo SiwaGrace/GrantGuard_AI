@@ -6,6 +6,7 @@ import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
+import { isFlagged } from '../lib/grantStatus'
 
 const DUE_SOON_DAYS = 14
 
@@ -46,7 +47,6 @@ export default function ReviewScreen() {
   const [saving, setSaving] = useState(false)
 
   const [confirming, setConfirming] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
   const [verifyingId, setVerifyingId] = useState(null)
 
   const [detail, setDetail] = useState(null)
@@ -225,7 +225,6 @@ export default function ReviewScreen() {
       setObligations((prev) =>
         prev.map((o) => (o.status === 'pending_review' ? { ...o, status: 'confirmed' } : o))
       )
-      setConfirmed(true)
       toast.success('All obligations confirmed — tracking is active')
     } catch (err) {
       toast.error(err.message || 'Could not confirm obligations')
@@ -265,8 +264,8 @@ export default function ReviewScreen() {
   }, {})
 
   const pendingCount = obligations.filter((o) => o.status === 'pending_review').length
-  const lowConfidenceCount = obligations.filter((o) => o.confidence === 'low').length
-  const needsReview = pendingCount > 0 || lowConfidenceCount > 0
+  const flaggedCount = obligations.filter(isFlagged).length
+  const needsReview = pendingCount > 0 || flaggedCount > 0
 
   if (loading) {
     return (
@@ -329,7 +328,7 @@ export default function ReviewScreen() {
                   Needs Review
                 </span>
               )}
-              {confirmed && !needsReview && (
+              {obligations.length > 0 && !needsReview && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-container text-on-primary-container border border-outline-variant font-label-caps text-label-caps uppercase">
                   <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
                   On Track
@@ -399,10 +398,10 @@ export default function ReviewScreen() {
               {pendingCount} pending
             </span>
           )}
-          {lowConfidenceCount > 0 && (
+          {flaggedCount > 0 && (
             <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-1">
               <span className="material-symbols-outlined text-[14px]">gavel</span>
-              {lowConfidenceCount} low confidence
+              {flaggedCount} flagged
             </span>
           )}
         </p>
@@ -434,7 +433,7 @@ export default function ReviewScreen() {
                   </div>
                   <div className="grid grid-cols-1 gap-4">
                     {items.map((o) => {
-                      const flagged = o.confidence === 'low' && !o.verified
+                      const flagged = isFlagged(o)
                       const isConfirmed = o.status === 'confirmed'
                       const isEditing = editingId === o.id
                       return (
@@ -608,7 +607,7 @@ export default function ReviewScreen() {
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-alert-crimson text-[20px]">flag</span>
                   <span className="font-label-caps text-label-caps text-alert-crimson uppercase tracking-widest">
-                    {detail.status === 'confirmed' ? 'Confirmed' : detail.confidence === 'low' ? 'Flagged' : 'Needs Review'}
+                    {detail.status === 'confirmed' ? 'Confirmed' : isFlagged(detail) ? 'Flagged' : 'Needs Review'}
                   </span>
                 </div>
                 <div className="bg-surface-dim px-2 py-1 flex items-center gap-2 inkwell-border">

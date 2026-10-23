@@ -7,20 +7,15 @@ import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
+import { canRetryExtraction, grantStatus, isFlagged } from '../lib/grantStatus'
 
 const DUE_SOON_DAYS = 14
-
-function statusBadge(grant, docStatus, pendingCount) {
-  if (docStatus === 'pending') return 'processing'
-  if (docStatus === 'failed') return 'failed'
-  if (pendingCount > 0) return 'needs review'
-  return 'on track'
-}
 
 const HEALTH = {
   'on track': { text: 'text-primary', icon: 'check_circle', filled: true },
   'needs review': { text: 'text-warning-ochre', icon: 'radio_button_unchecked' },
   failed: { text: 'text-alert-crimson', icon: 'error' },
+  'no obligations': { text: 'text-alert-crimson', icon: 'report' },
   processing: { text: 'text-on-surface-variant', icon: 'cloud_sync' },
 }
 
@@ -170,12 +165,10 @@ export default function Dashboard() {
       return d >= now && d <= dueSoonDeadline
     })
 
-    const lowConf = allObligations.filter(
-      (o) => o.confidence === 'low' && !o.verified
-    ).length
+    const lowConf = allObligations.filter(isFlagged).length
 
     const flagItems = allObligations
-      .filter((o) => o.confidence === 'low' && !o.verified)
+      .filter(isFlagged)
       .map((o) => {
         const grant = grantList.find((g) => g.id === o.grant_id)
         return { ...o, grantName: grant?.name || 'Unknown grant' }
@@ -217,6 +210,7 @@ export default function Dashboard() {
         ...g,
         docStatus: latestDoc?.extraction_status || 'pending',
         pendingCount: pending,
+        flaggedCount: grantObligations.filter(isFlagged).length,
         obligationCount: grantObligations.length,
         nextDue,
         nextDueDueSoon: nextDue ? nextDue <= dueSoonDeadline : false,
@@ -443,7 +437,7 @@ export default function Dashboard() {
 
                   <div className="divide-y divide-outline">
                     {visibleGrants.map((g) => {
-                      const badge = statusBadge(g, g.docStatus, g.pendingCount)
+                      const badge = grantStatus(g)
                       const health = HEALTH[badge] || HEALTH.processing
                       return (
                         <div key={g.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-center hover:bg-surface-container-low transition-colors">
@@ -489,7 +483,7 @@ export default function Dashboard() {
                                 <span className="material-symbols-outlined text-[12px]">visibility</span>
                                 View
                               </button>
-                              {g.docStatus === 'failed' && (
+                              {canRetryExtraction(badge) && (
                                 <button
                                   className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[10px] uppercase hover:bg-surface-container transition-colors"
                                   disabled={retryingId === g.id}

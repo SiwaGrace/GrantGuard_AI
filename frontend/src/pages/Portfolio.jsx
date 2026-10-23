@@ -4,20 +4,15 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
+import { grantStatus, isFlagged } from '../lib/grantStatus'
 
 const DUE_SOON_DAYS = 14
-
-function statusBadge(grant, docStatus, pendingCount) {
-  if (docStatus === 'pending') return 'processing'
-  if (docStatus === 'failed') return 'failed'
-  if (pendingCount > 0) return 'needs review'
-  return 'on track'
-}
 
 const HEALTH = {
   'on track': { color: 'text-primary', icon: 'check_circle', filled: true, chip: 'text-primary' },
   'needs review': { color: 'text-warning-ochre', icon: 'radio_button_unchecked', filled: false, chip: 'text-warning-ochre' },
   failed: { color: 'text-alert-crimson', icon: 'error', filled: false, chip: 'text-alert-crimson' },
+  'no obligations': { color: 'text-alert-crimson', icon: 'report', filled: false, chip: 'text-alert-crimson' },
   processing: { color: 'text-on-surface-variant', icon: 'cloud_sync', filled: false, chip: 'text-on-surface-variant' },
 }
 
@@ -89,6 +84,7 @@ export default function Portfolio() {
         ...g,
         docStatus: latestDoc?.extraction_status || 'pending',
         pendingCount: pending,
+        flaggedCount: grantObligations.filter(isFlagged).length,
         obligationCount: grantObligations.length,
         nextDue,
         nextDueDueSoon: nextDue ? nextDue <= deadline : false,
@@ -165,7 +161,7 @@ export default function Portfolio() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {visible.map((g) => {
-              const badge = statusBadge(g, g.docStatus, g.pendingCount)
+              const badge = grantStatus(g)
               const health = HEALTH[badge] || HEALTH.processing
               return (
                 <button
