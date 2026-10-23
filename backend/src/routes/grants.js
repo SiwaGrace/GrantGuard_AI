@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { Router } from 'express'
+import { safeRouter } from '../lib/safeRouter.js'
 import multer from 'multer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
@@ -21,7 +21,7 @@ const upload = multer({
   },
 })
 
-const router = Router()
+const router = safeRouter()
 
 function sanitizeFileName(name) {
   const base = name
@@ -242,12 +242,12 @@ async function createGrant(req, res) {
   })
 }
 
-router.post('/grants', requireAuth, (req, res) => {
+router.post('/grants', requireAuth, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       return res.status(400).json({ error: friendlyUploadError(err) })
     }
-    createGrant(req, res)
+    createGrant(req, res).catch(next)
   })
 })
 

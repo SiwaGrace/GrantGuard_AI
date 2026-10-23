@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { apiFetch, readJson } from '../lib/api'
@@ -170,9 +169,10 @@ export default function ChatWidget() {
     if (!content || sending) return
 
     const userMsg = { role: 'user', content }
+    // Failed answers aren't sent back as conversation history
     const history = initial
       ? []
-      : messages.map((m) => ({ role: m.role, content: m.content }))
+      : messages.filter((m) => !m.error && m.content).map((m) => ({ role: m.role, content: m.content }))
 
     setMessages((prev) => [...prev, userMsg])
     setInput('')
@@ -193,6 +193,7 @@ export default function ChatWidget() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message: content, history }),
+        timeoutMs: 65000,
       })
 
       const payload = await readJson(res)
@@ -204,12 +205,16 @@ export default function ChatWidget() {
         return next
       })
     } catch (err) {
+      // Shown inline in the conversation only (no toast as well)
       setMessages((prev) => {
         const next = [...prev]
-        next[next.length - 1] = { role: 'assistant', content: '', error: true }
+        next[next.length - 1] = {
+          role: 'assistant',
+          content: '',
+          error: err.message || 'Could not reach the assistant. Please try again.',
+        }
         return next
       })
-      toast.error(err.message || 'Could not reach the assistant')
     } finally {
       setSending(false)
     }
@@ -288,7 +293,7 @@ export default function ChatWidget() {
                             Thinking…
                           </span>
                         ) : m.error ? (
-                          <p className="text-alert-crimson">Something went wrong. Please try again.</p>
+                          <p role="alert" className="text-alert-crimson">{m.error}</p>
                         ) : (
                           <Markdown text={m.content} />
                         )}
