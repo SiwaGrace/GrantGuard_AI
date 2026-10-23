@@ -241,7 +241,7 @@ export default function Portfolio() {
                           setViewDocGrant(g)
                         }
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors cursor-pointer shrink-0"
                     >
                       <span className="material-symbols-outlined text-[13px]">visibility</span>
                       View Document

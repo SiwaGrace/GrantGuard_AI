@@ -74,10 +74,13 @@
   --font-body-sm: 'Inter', system-ui, sans-serif;
 
   /* Type scale (match UI.md: label-caps / headline / body / source / display) */
-  --text-label-caps: 11px;
+  --text-label-caps: 12px;
   --text-label-caps--line-height: 1.2;
-  --text-label-caps--letter-spacing: 0.05em;
+  --text-label-caps--letter-spacing: 0.08em;
   --text-label-caps--font-weight: 600;
+
+  /* Wider default tracking so small uppercase mono labels stay readable */
+  --tracking-wider: 0.08em;
 
   --text-headline-lg-mobile: 24px;
   --text-headline-lg-mobile--line-height: 1.2;

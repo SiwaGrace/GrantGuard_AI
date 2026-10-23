@@ -552,7 +552,7 @@ export default function ReviewScreen() {
                               <div className="flex gap-2 flex-wrap">
                                 <button
                                   onClick={() => setDetail(o)}
-                                  className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                  className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
                                 >
                                   <span className="material-symbols-outlined text-[14px]">plagiarism</span>
                                   Source
@@ -560,7 +560,7 @@ export default function ReviewScreen() {
                                 {o.status === 'pending_review' && (
                                   <button
                                     onClick={() => startEdit(o)}
-                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
                                   >
                                     <span className="material-symbols-outlined text-[14px]">edit</span>
                                     Edit
@@ -570,7 +570,7 @@ export default function ReviewScreen() {
                                   <button
                                     onClick={() => handleVerify(o.id)}
                                     disabled={verifyingId === o.id}
-                                    className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                    className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
                                   >
                                     <span className="material-symbols-outlined filled-icon text-[14px]">verified</span>
                                     {verifyingId === o.id ? 'Marking…' : 'Mark as reviewed'}

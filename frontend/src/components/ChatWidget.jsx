@@ -342,7 +342,7 @@ export default function ChatWidget() {
             <div className="flex justify-end mt-1">
               <button
                 onClick={clearChat}
-                className="font-label-caps text-[10px] text-secondary uppercase hover:text-primary transition-colors"
+                className="font-label-caps text-[12px] text-secondary uppercase hover:text-primary transition-colors"
               >
                 Clear conversation
               </button>

@@ -462,7 +462,7 @@ export default function Dashboard() {
                               <span className={`material-symbols-outlined text-[16px] ${health.filled ? 'filled-icon' : ''} ${health.text}`}>
                                 {health.icon}
                               </span>
-                              <span className={`font-label-caps text-[10px] uppercase ${health.text}`}>{badge}</span>
+                              <span className={`font-label-caps text-[12px] uppercase ${health.text}`}>{badge}</span>
                             </span>
                           </div>
                           <div className="col-span-3 flex items-center justify-between md:justify-end gap-3">
@@ -473,7 +473,7 @@ export default function Dashboard() {
                             </span>
                             <div className="flex gap-2">
                               <button
-                                className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[10px] uppercase hover:bg-surface-container transition-colors flex items-center gap-1"
+                                className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[12px] uppercase hover:bg-surface-container transition-colors flex items-center gap-1"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setViewDocGrant(g)
@@ -485,7 +485,7 @@ export default function Dashboard() {
                               </button>
                               {canRetryExtraction(badge) && (
                                 <button
-                                  className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[10px] uppercase hover:bg-surface-container transition-colors"
+                                  className="px-2.5 py-1 border border-outline text-primary font-label-caps text-[12px] uppercase hover:bg-surface-container transition-colors"
                                   disabled={retryingId === g.id}
                                   onClick={(e) => handleRetryExtraction(e, g.id)}
                                 >
@@ -493,7 +493,7 @@ export default function Dashboard() {
                                 </button>
                               )}
                               <button
-                                className={`px-2.5 py-1 border font-label-caps text-[10px] uppercase transition-colors ${
+                                className={`px-2.5 py-1 border font-label-caps text-[12px] uppercase transition-colors ${
                                   confirmDeleteId === g.id
                                     ? 'bg-error text-on-error border-error'
                                     : 'border-outline text-on-surface hover:bg-surface-container'
