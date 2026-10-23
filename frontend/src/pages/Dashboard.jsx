@@ -270,7 +270,7 @@ export default function Dashboard() {
         {/* Top header */}
         <header className="inkwell-border-b flex justify-between items-center shrink-0 pb-6 gap-4 flex-wrap">
           <h2 className="font-headline-lg text-headline-lg text-on-surface">Portfolio Overview</h2>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="relative hidden sm:block">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[18px]">
                 search
@@ -279,12 +279,10 @@ export default function Dashboard() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search grants, clauses, or donors..."
-                className="bg-surface-container-low inkwell-border py-2 pl-10 pr-4 text-source-code font-source-code w-64 focus:outline-none focus:border-primary placeholder-secondary"
+                placeholder="Search grants…"
+                aria-label="Search grants by name or funder"
+                className="bg-surface-container-low inkwell-border py-2 pl-10 pr-4 text-source-code font-source-code w-56 focus:outline-none focus:border-primary placeholder-secondary"
               />
-            </div>
-            <div className="w-8 h-8 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase">
-              {avatarInitial}
             </div>
             <span
               className="inline-flex"
@@ -310,6 +308,13 @@ export default function Dashboard() {
               <span className="material-symbols-outlined text-[16px]">upload_file</span>
               Upload Grant
             </button>
+            <div
+              title={user?.email}
+              aria-label={`Signed in as ${user?.email}`}
+              className="w-8 h-8 shrink-0 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase"
+            >
+              {avatarInitial}
+            </div>
           </div>
         </header>
 
