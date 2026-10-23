@@ -28,6 +28,7 @@ Open **SQL Editor → New query** in Supabase. For each file below, paste its en
 | 2 | [`migrations/002_storage_bucket.sql`](migrations/002_storage_bucket.sql) | Creates the private `grant-documents` storage bucket and its access policies |
 | 3 | [`migrations/003_rls_enable.sql`](migrations/003_rls_enable.sql) | Re-asserts RLS and owner-only policies (safe to re-run) |
 | 4 | [`migrations/004_add_grant_share.sql`](migrations/004_add_grant_share.sql) | Adds `share_token` and the `anon_grant_summary()` function used by the funder share link (safe to re-run) |
+| 5 | [`migrations/005_obligation_completed.sql`](migrations/005_obligation_completed.sql) | Adds `completed_at` so obligations can be marked as done; past-due obligations that aren't done show as overdue (safe to re-run) |
 
 > `001_init_schema.sql` is **not** safe to run twice. It fails with "relation already exists". If that happens, the tables are already there and you can move on to file 2.
 

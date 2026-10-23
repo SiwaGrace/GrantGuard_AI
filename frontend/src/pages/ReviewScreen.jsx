@@ -6,17 +6,7 @@ import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
-import { isFlagged } from '../lib/grantStatus'
-
-const DUE_SOON_DAYS = 14
-
-function isDueSoon(dueDate) {
-  if (!dueDate) return false
-  const now = new Date()
-  const due = new Date(dueDate)
-  const deadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
-  return due >= now && due <= deadline
-}
+import { daysUntil, isCompleted, isDueSoon, isFlagged, isOverdue } from '../lib/grantStatus'
 
 const TYPE_LABELS = {
   deadline: 'Deadline',
@@ -48,6 +38,7 @@ export default function ReviewScreen() {
 
   const [confirming, setConfirming] = useState(false)
   const [verifyingId, setVerifyingId] = useState(null)
+  const [completingId, setCompletingId] = useState(null)
 
   const [detail, setDetail] = useState(null)
   const [showDocument, setShowDocument] = useState(false)
@@ -258,6 +249,31 @@ export default function ReviewScreen() {
     }
   }
 
+  // Done is separate from confirmed: confirming checks the AI extraction,
+  // done means the report was submitted / the condition was met
+  async function handleToggleDone(o) {
+    const completed = !isCompleted(o)
+    setCompletingId(o.id)
+    try {
+      const res = await apiFetch(`/api/grants/${grantId}/obligations/${o.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed }),
+      })
+      const payload = await readJson(res)
+      if (!res.ok) throw new Error(payload.error || 'Could not update the obligation')
+
+      setObligations((prev) =>
+        prev.map((x) => (x.id === o.id ? { ...x, completed_at: payload.obligation?.completed_at ?? null } : x)),
+      )
+      toast.success(completed ? 'Marked as done' : 'Marked as not done')
+    } catch (err) {
+      toast.error(err.message || 'Could not update the obligation')
+    } finally {
+      setCompletingId(null)
+    }
+  }
+
   const grouped = obligations.reduce((acc, o) => {
     ;(acc[o.type] = acc[o.type] || []).push(o)
     return acc
@@ -265,6 +281,7 @@ export default function ReviewScreen() {
 
   const pendingCount = obligations.filter((o) => o.status === 'pending_review').length
   const flaggedCount = obligations.filter(isFlagged).length
+  const overdueCount = obligations.filter((o) => isOverdue(o)).length
   const needsReview = pendingCount > 0 || flaggedCount > 0
 
   if (loading) {
@@ -322,13 +339,19 @@ export default function ReviewScreen() {
               <h1 className="font-headline-lg text-headline-lg text-on-surface">
                 Obligation Review
               </h1>
+              {overdueCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-alert-crimson text-white border border-alert-crimson font-label-caps text-label-caps uppercase">
+                  <span className="material-symbols-outlined text-[14px]">schedule</span>
+                  Overdue ({overdueCount})
+                </span>
+              )}
               {needsReview && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-error-container text-on-error-container border border-outline-variant font-label-caps text-label-caps uppercase">
                   <span className="material-symbols-outlined text-[14px]">flag</span>
                   Needs Review
                 </span>
               )}
-              {obligations.length > 0 && !needsReview && (
+              {obligations.length > 0 && !needsReview && overdueCount === 0 && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-container text-on-primary-container border border-outline-variant font-label-caps text-label-caps uppercase">
                   <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
                   On Track
@@ -392,6 +415,12 @@ export default function ReviewScreen() {
         {/* Summary line */}
         <p className="text-body-md text-on-surface-variant flex items-center gap-3 flex-wrap">
           {obligations.length} obligation{obligations.length !== 1 ? 's' : ''} extracted
+          {overdueCount > 0 && (
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-1">
+              <span className="material-symbols-outlined text-[14px]">schedule</span>
+              {overdueCount} overdue
+            </span>
+          )}
           {pendingCount > 0 && (
             <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-ochre uppercase bg-surface-container inkwell-border px-2 py-1">
               <span className="material-symbols-outlined text-[14px]">visibility</span>
@@ -440,7 +469,7 @@ export default function ReviewScreen() {
                         <div
                           key={o.id}
                           className={`bg-surface-container-lowest inkwell-border p-5 flex flex-col gap-3 notched-card ${
-                            flagged
+                            flagged || isOverdue(o)
                               ? 'border-l-4 border-alert-crimson'
                               : isConfirmed
                                 ? 'border-l-4 border-primary'
@@ -503,9 +532,21 @@ export default function ReviewScreen() {
                             <>
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  {isDueSoon(o.due_date) && (
+                                  {isOverdue(o) && (
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-white uppercase bg-alert-crimson px-2 py-0.5 border border-alert-crimson">
+                                      <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                      overdue · {-daysUntil(o.due_date)}d
+                                    </span>
+                                  )}
+                                  {isDueSoon(o) && (
                                     <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-0.5 border border-outline-variant">
                                       due soon
+                                    </span>
+                                  )}
+                                  {isCompleted(o) && (
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-on-primary uppercase bg-primary px-2 py-0.5 border border-primary">
+                                      <span className="material-symbols-outlined filled-icon text-[14px]">task_alt</span>
+                                      done
                                     </span>
                                   )}
                                   {flagged && (
@@ -535,8 +576,9 @@ export default function ReviewScreen() {
                                 {o.description}
                               </p>
                               {o.due_date && (
-                                <p className="font-source-code text-source-code text-on-surface-variant">
+                                <p className={`font-source-code text-source-code ${isOverdue(o) ? 'text-alert-crimson font-semibold' : 'text-on-surface-variant'}`}>
                                   Due: {o.due_date}
+                                  {isCompleted(o) && ` · Done ${new Date(o.completed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
                                 </p>
                               )}
                               {o.source_excerpt && (
@@ -574,6 +616,19 @@ export default function ReviewScreen() {
                                   >
                                     <span className="material-symbols-outlined filled-icon text-[14px]">verified</span>
                                     {verifyingId === o.id ? 'Marking…' : 'Mark as reviewed'}
+                                  </button>
+                                )}
+                                {(o.due_date || o.type === 'deadline' || o.type === 'reporting') && (
+                                  <button
+                                    onClick={() => handleToggleDone(o)}
+                                    disabled={completingId === o.id}
+                                    aria-pressed={isCompleted(o)}
+                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                  >
+                                    <span className={`material-symbols-outlined text-[14px] ${isCompleted(o) ? '' : 'filled-icon'}`}>
+                                      {isCompleted(o) ? 'undo' : 'task_alt'}
+                                    </span>
+                                    {completingId === o.id ? 'Saving…' : isCompleted(o) ? 'Mark as not done' : 'Mark as done'}
                                   </button>
                                 )}
                               </div>

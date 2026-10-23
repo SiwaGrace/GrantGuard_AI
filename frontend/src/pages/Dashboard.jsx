@@ -7,9 +7,18 @@ import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
-import { canRetryExtraction, grantStatus, isFlagged } from '../lib/grantStatus'
+import {
+  DUE_SOON_DAYS,
+  canRetryExtraction,
+  daysUntil,
+  grantStatus,
+  isCompleted,
+  isDueSoon,
+  isFlagged,
+  isOverdue,
+  todayISO,
+} from '../lib/grantStatus'
 
-const DUE_SOON_DAYS = 14
 const VIEW_STORAGE_KEY = 'grantguard:grant-list-view'
 
 function readSavedView() {
@@ -22,6 +31,7 @@ function readSavedView() {
 
 const HEALTH = {
   'on track': { text: 'text-primary', icon: 'check_circle', filled: true },
+  overdue: { text: 'text-alert-crimson', icon: 'schedule' },
   'needs review': { text: 'text-warning-ochre', icon: 'radio_button_unchecked' },
   failed: { text: 'text-alert-crimson', icon: 'error' },
   'no obligations': { text: 'text-alert-crimson', icon: 'report' },
@@ -43,7 +53,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [grants, setGrants] = useState([])
   const [portfolioObligations, setPortfolioObligations] = useState([])
-  const [stats, setStats] = useState({ total: 0, obligations: 0, dueSoon: 0, lowConf: 0 })
+  const [stats, setStats] = useState({ total: 0, obligations: 0, overdue: 0, dueSoon: 0, lowConf: 0 })
   const [dueSoonList, setDueSoonList] = useState([])
   const [flagList, setFlagList] = useState([])
 
@@ -175,14 +185,9 @@ export default function Dashboard() {
       allDocs = docsData || []
     }
 
-    const now = new Date()
-    const dueSoonDeadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
-
-    const dueSoonItems = allObligations.filter((o) => {
-      if (!o.due_date) return false
-      const d = new Date(o.due_date)
-      return d >= now && d <= dueSoonDeadline
-    })
+    const today = todayISO()
+    const overdueItems = allObligations.filter((o) => isOverdue(o, today))
+    const dueSoonItems = allObligations.filter((o) => isDueSoon(o, today))
 
     const lowConf = allObligations.filter(isFlagged).length
 
@@ -197,15 +202,16 @@ export default function Dashboard() {
     setStats({
       total: grantList.length,
       obligations: allObligations.length,
+      overdue: overdueItems.length,
       dueSoon: dueSoonItems.length,
       lowConf,
     })
 
-    const dueSoonList = dueSoonItems
+    // Overdue first (most overdue at the top), then due soon
+    const dueSoonList = [...overdueItems, ...dueSoonItems]
       .map((o) => {
         const grant = grantList.find((g) => g.id === o.grant_id)
-        const daysLeft = Math.ceil((new Date(o.due_date) - now) / (1000 * 60 * 60 * 24))
-        return { ...o, grantName: grant?.name || 'Unknown grant', daysLeft }
+        return { ...o, grantName: grant?.name || 'Unknown grant', daysLeft: daysUntil(o.due_date, today) }
       })
       .sort((a, b) => a.daysLeft - b.daysLeft)
 
@@ -219,20 +225,21 @@ export default function Dashboard() {
       ).length
 
       const grantObligations = allObligations.filter((o) => o.grant_id === g.id)
-      const upcoming = grantObligations
-        .map((o) => o.due_date && new Date(o.due_date))
-        .filter((d) => d && d >= now)
-        .sort((a, b) => a - b)
-      const nextDue = upcoming.length > 0 ? new Date(upcoming[0]) : null
+      // Earliest deadline that isn't done yet, even if it has already passed
+      const nextOutstanding = grantObligations
+        .filter((o) => o.due_date && !isCompleted(o))
+        .sort((a, b) => a.due_date.localeCompare(b.due_date))[0]
 
       return {
         ...g,
         docStatus: latestDoc?.extraction_status || 'pending',
         pendingCount: pending,
         flaggedCount: grantObligations.filter(isFlagged).length,
+        overdueCount: grantObligations.filter((o) => isOverdue(o, today)).length,
         obligationCount: grantObligations.length,
-        nextDue,
-        nextDueDueSoon: nextDue ? nextDue <= dueSoonDeadline : false,
+        nextDue: nextOutstanding ? new Date(`${nextOutstanding.due_date}T00:00:00`) : null,
+        nextDueOverdue: nextOutstanding ? isOverdue(nextOutstanding, today) : false,
+        nextDueDueSoon: nextOutstanding ? isDueSoon(nextOutstanding, today) : false,
       }
     })
 
@@ -335,7 +342,7 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Stat ledger */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-primary opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Active Grants</p>
@@ -349,10 +356,23 @@ export default function Dashboard() {
 
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-alert-crimson opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
+                <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Overdue</p>
+                <div className="flex items-end gap-3">
+                  <span className={`font-display-lg text-display-lg ${stats.overdue > 0 ? 'text-alert-crimson' : 'text-on-surface'}`}>
+                    {stats.overdue}
+                  </span>
+                  <span className="font-label-caps text-label-caps text-alert-crimson mb-1.5 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">schedule</span> Past due, not done
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
+                <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Due Soon ({DUE_SOON_DAYS}d)</p>
                 <div className="flex items-end gap-3">
-                  <span className="font-display-lg text-display-lg text-alert-crimson">{stats.dueSoon}</span>
-                  <span className="font-label-caps text-label-caps text-alert-crimson mb-1.5 flex items-center gap-1">
+                  <span className="font-display-lg text-display-lg text-warning-ochre">{stats.dueSoon}</span>
+                  <span className="font-label-caps text-label-caps text-warning-ochre mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">warning</span> Action required
                   </span>
                 </div>
@@ -374,7 +394,7 @@ export default function Dashboard() {
             {dueSoonList.length > 0 && (
               <section>
                 <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
-                  Upcoming Obligations · {DUE_SOON_DAYS} Day Window
+                  Overdue &amp; Upcoming · Next {DUE_SOON_DAYS} Days
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {dueSoonList.map((o) => (
@@ -385,12 +405,20 @@ export default function Dashboard() {
                           state: { grantName: o.grantName },
                         })
                       }
-                      className="text-left bg-surface-container-lowest inkwell-border p-4 hover:bg-surface-container-low transition-colors notched-card"
+                      className={`text-left bg-surface-container-lowest inkwell-border p-4 hover:bg-surface-container-low transition-colors notched-card ${
+                        o.daysLeft < 0 ? 'border-l-4 border-l-alert-crimson' : ''
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">{o.type.replace('_', ' ')}</span>
-                        <span className="font-label-caps text-label-caps text-alert-crimson">
-                          {o.daysLeft === 0 ? 'TODAY' : o.daysLeft === 1 ? 'TOMORROW' : `${o.daysLeft} DAYS`}
+                        <span className={`font-label-caps text-label-caps ${o.daysLeft < 0 ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
+                          {o.daysLeft < 0
+                            ? `OVERDUE · ${-o.daysLeft} DAY${o.daysLeft === -1 ? '' : 'S'}`
+                            : o.daysLeft === 0
+                              ? 'DUE TODAY'
+                              : o.daysLeft === 1
+                                ? 'TOMORROW'
+                                : `${o.daysLeft} DAYS`}
                         </span>
                       </div>
                       <p className="text-body-md font-medium text-primary mb-1">{o.description}</p>
@@ -515,19 +543,19 @@ export default function Dashboard() {
                         {g.nextDue && (
                           <div
                             className={`p-3 mb-6 inkwell-border flex items-start gap-3 ${
-                              g.nextDueDueSoon ? 'bg-error-container border-l-2 border-l-alert-crimson' : 'bg-surface'
+                              g.nextDueOverdue || g.nextDueDueSoon ? 'bg-error-container border-l-2 border-l-alert-crimson' : 'bg-surface'
                             }`}
                           >
-                            <span className={`material-symbols-outlined text-[18px] mt-0.5 ${g.nextDueDueSoon ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
-                              {g.nextDueDueSoon ? 'warning' : 'event'}
+                            <span className={`material-symbols-outlined text-[18px] mt-0.5 ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson' : 'text-warning-ochre'}`}>
+                              {g.nextDueOverdue ? 'schedule' : g.nextDueDueSoon ? 'warning' : 'event'}
                             </span>
                             <div>
                               <span className="font-label-caps text-label-caps text-on-surface block mb-1 uppercase">
                                 Next Deadline
                               </span>
-                              <span className={`text-body-sm ${g.nextDueDueSoon ? 'text-alert-crimson font-medium' : 'text-secondary'}`}>
+                              <span className={`text-body-sm ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson font-medium' : 'text-secondary'}`}>
                                 {g.nextDue.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
-                                {g.nextDueDueSoon && ' — due soon'}
+                                {g.nextDueOverdue ? ' — overdue' : g.nextDueDueSoon ? ' — due soon' : ''}
                               </span>
                             </div>
                           </div>
@@ -607,7 +635,7 @@ export default function Dashboard() {
                             </span>
                           </div>
                           <div className="col-span-3 flex items-center justify-between md:justify-end gap-3">
-                            <span className={`font-source-code text-source-code ${g.nextDueDueSoon ? 'text-alert-crimson' : 'text-on-surface'}`}>
+                            <span className={`font-source-code text-source-code ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson' : 'text-on-surface'}`}>
                               {g.nextDue
                                 ? g.nextDue.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
                                 : '—'}

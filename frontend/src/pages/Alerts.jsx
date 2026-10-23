@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import AppShell from '../components/AppShell'
+import { daysUntil, isFlagged, isOverdue, todayISO } from '../lib/grantStatus'
 
 const PAGE_SIZE = 10
 
@@ -21,12 +22,14 @@ const TYPE_LABELS = {
 }
 
 const STATUS_META = {
+  overdue: { label: 'Overdue', icon: 'schedule', color: 'text-alert-crimson', fill: false },
   flagged: { label: 'Flagged', icon: 'flag', color: 'text-alert-crimson', fill: true },
   'needs review': { label: 'Needs Review', icon: 'radio_button_unchecked', color: 'text-warning-ochre', fill: false },
 }
 
 function rowStatus(obligation) {
-  if (obligation.confidence === 'low' && !obligation.verified) return 'flagged'
+  if (obligation.overdue) return 'overdue'
+  if (isFlagged(obligation)) return 'flagged'
   return 'needs review'
 }
 
@@ -58,11 +61,11 @@ export default function Alerts() {
       allObligations = obligationsData || []
     }
 
+    // Overdue = past due and not marked done, even if already confirmed
+    const today = todayISO()
     const alertRows = allObligations
-      .filter(
-        (o) =>
-          (o.confidence === 'low' && !o.verified) || o.status === 'pending_review',
-      )
+      .map((o) => ({ ...o, overdue: isOverdue(o, today) }))
+      .filter((o) => o.overdue || isFlagged(o) || o.status === 'pending_review')
       .map((o) => {
         const grant = grantList.find((g) => g.id === o.grant_id)
         return {
@@ -73,10 +76,11 @@ export default function Alerts() {
         }
       })
       .sort((a, b) => {
-        const rank = { flagged: 0, 'needs review': 1 }
+        const rank = { overdue: 0, flagged: 1, 'needs review': 2 }
         const ar = rank[rowStatus(a)]
         const br = rank[rowStatus(b)]
         if (ar !== br) return ar - br
+        if (a.overdue) return a.due_date.localeCompare(b.due_date)
         return new Date(a.created_at) - new Date(b.created_at)
       })
 
@@ -97,12 +101,14 @@ export default function Alerts() {
   }, [user, loadData])
 
   const counts = useMemo(() => {
+    const overdue = rows.filter((r) => rowStatus(r) === 'overdue').length
     const flagged = rows.filter((r) => rowStatus(r) === 'flagged').length
-    const needsReview = rows.length - flagged
-    return { all: rows.length, flagged, needsReview }
+    const needsReview = rows.length - overdue - flagged
+    return { all: rows.length, overdue, flagged, needsReview }
   }, [rows])
 
   const visible = useMemo(() => {
+    if (filter === 'overdue') return rows.filter((r) => rowStatus(r) === 'overdue')
     if (filter === 'flagged') return rows.filter((r) => rowStatus(r) === 'flagged')
     if (filter === 'needs review') return rows.filter((r) => rowStatus(r) === 'needs review')
     return rows
@@ -148,6 +154,13 @@ export default function Alerts() {
           <div className="flex items-center gap-2 font-label-caps text-label-caps uppercase flex-wrap">
             {pill('all', 'All', counts.all, filter === 'all', 'border-outline text-primary')}
             {pill(
+              'overdue',
+              'Overdue',
+              counts.overdue,
+              filter === 'overdue',
+              'border-alert-crimson bg-error-container/20 text-alert-crimson font-bold',
+            )}
+            {pill(
               'flagged',
               'Flagged',
               counts.flagged,
@@ -177,7 +190,7 @@ export default function Alerts() {
             </h2>
             <p className="text-body-md text-on-surface-variant max-w-md">
               {filter === 'all'
-                ? 'Every extracted obligation has been reviewed and confirmed. Nothing needs attention right now.'
+                ? 'Every obligation has been reviewed and nothing is overdue. Nothing needs attention right now.'
                 : `No ${filter} obligations in your portfolio right now.`}
             </p>
           </div>
@@ -197,7 +210,9 @@ export default function Alerts() {
                   const meta = STATUS_META[status]
                   const typeLabel = TYPE_LABELS[o.type] || 'Obligation'
                   const due = o.due_date
-                    ? ` · Due ${o.due_date}`
+                    ? o.overdue
+                      ? ` · Was due ${o.due_date} (${-daysUntil(o.due_date)} days ago)`
+                      : ` · Due ${o.due_date}`
                     : ''
                   return (
                     <div

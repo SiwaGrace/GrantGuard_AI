@@ -12,7 +12,7 @@ Answer the user's question using ONLY the data in this snapshot. Be precise and 
 
 Guidelines:
 - Count and arithmetic must be computed exactly from the snapshot. State numbers plainly, e.g. "3 grants" and list them if helpful.
-- For deadline questions, compare dates using CURRENT_DATE. "Tomorrow" = CURRENT_DATE + 1 day. "This week" = 7 days from CURRENT_DATE. "Overdue" = due_date < CURRENT_DATE.
+- For deadline questions, compare dates using CURRENT_DATE. "Tomorrow" = CURRENT_DATE + 1 day. "This week" = 7 days from CURRENT_DATE. "Overdue" = due_date < CURRENT_DATE and not completed (each obligation has an "overdue" flag). "completed" means the grantee marked it done; "review_status" only says whether the AI extraction was checked, not whether the work is done.
 - Reference obligations by their grant name, type, and due date.
 - Use "you have N grants", not "we".
 - If a question is not about compliance/grants, gently steer back.
@@ -20,6 +20,7 @@ Guidelines:
 Format the answer as short, readable markdown (bullet lists are fine). No JSON.`
 
 function buildSnapshot(grants, obligationsByGrant) {
+  const today = new Date().toISOString().slice(0, 10)
   const grantsWithCounts = grants.map((g) => {
     const obs = obligationsByGrant.get(g.id) || []
     return {
@@ -31,7 +32,9 @@ function buildSnapshot(grants, obligationsByGrant) {
         type: o.type,
         description: o.description,
         due_date: o.due_date || null,
-        status: o.status || null,
+        review_status: o.status || null,
+        completed: Boolean(o.completed_at),
+        overdue: Boolean(o.due_date && !o.completed_at && o.due_date < today),
         verified: o.verified ?? false,
         confidence: o.confidence || null,
         source_page: o.source_page || null,
@@ -39,7 +42,7 @@ function buildSnapshot(grants, obligationsByGrant) {
     }
   })
   // Compact JSON: the free Groq tier allows ~8k tokens per minute
-  return JSON.stringify({ current_date: new Date().toISOString().slice(0, 10), grants: grantsWithCounts })
+  return JSON.stringify({ current_date: today, grants: grantsWithCounts })
 }
 
 const MAX_HISTORY_MESSAGES = 12
@@ -116,7 +119,7 @@ router.post('/chat', requireAuth, async (req, res) => {
 
     const { data: obligations, error: obErr } = await supabaseAdmin
       .from('obligations')
-      .select('grant_id, type, description, due_date, status, verified, confidence, source_page')
+      .select('*')
       .in('grant_id', (grants || []).map((g) => g.id))
 
     if (obErr) throw new Error(`Could not load obligations: ${obErr.message}`)

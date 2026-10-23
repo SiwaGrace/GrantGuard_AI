@@ -304,6 +304,11 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
       updates[key] = req.body[key]
     }
   }
+  // "Done" is separate from "confirmed": confirming checks the AI's
+  // extraction, completing records that the obligation was fulfilled
+  if (req.body.completed !== undefined) {
+    updates.completed_at = req.body.completed ? new Date().toISOString() : null
+  }
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No valid fields to update' })
@@ -322,6 +327,11 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     .single()
 
   if (error) {
+    if (/completed_at/.test(error.message)) {
+      return res.status(500).json({
+        error: 'Marking obligations as done needs a database update: run migrations/005_obligation_completed.sql.',
+      })
+    }
     return res.status(500).json({ error: error.message })
   }
 
