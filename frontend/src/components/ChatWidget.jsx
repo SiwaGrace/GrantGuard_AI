@@ -11,9 +11,128 @@ const SUGGESTIONS = [
   'Summarize my portfolio health.',
 ]
 
-function renderHtml(text) {
-  const html = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  return { __html: html }
+// Renders the assistant's markdown as React elements (never raw HTML), so any
+// markup in the answer is shown as text instead of being executed.
+function renderInline(text) {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+    if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>
+    }
+    if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={i} className="font-source-code text-source-code bg-surface-container px-1">
+          {part.slice(1, -1)}
+        </code>
+      )
+    }
+    return part
+  })
+}
+
+function splitRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+}
+
+function parseBlocks(text) {
+  const blocks = []
+  let current = null
+
+  function push(kind, value) {
+    if (!current || current.kind !== kind) {
+      current = { kind, items: [] }
+      blocks.push(current)
+    }
+    current.items.push(value)
+  }
+
+  for (const raw of String(text || '').replace(/\r\n/g, '\n').split('\n')) {
+    const line = raw.trimEnd()
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/)
+    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/)
+    const heading = line.match(/^\s*#{1,6}\s+(.*)$/)
+
+    if (!line.trim()) {
+      current = null
+    } else if (/^\s*\|/.test(line)) {
+      // Skip the |---|---| separator row under a table header
+      if (!/^\s*\|?[\s:|-]+\|?\s*$/.test(line)) push('table', splitRow(line))
+    } else if (bullet) {
+      push('ul', bullet[1])
+    } else if (numbered) {
+      push('ol', numbered[1])
+    } else if (heading) {
+      current = null
+      blocks.push({ kind: 'h', items: [heading[1]] })
+    } else {
+      push('p', line)
+    }
+  }
+  return blocks
+}
+
+function Markdown({ text }) {
+  return (
+    <div className="space-y-2">
+      {parseBlocks(text).map((block, i) => {
+        if (block.kind === 'ul' || block.kind === 'ol') {
+          const List = block.kind
+          return (
+            <List key={i} className={`${block.kind === 'ul' ? 'list-disc' : 'list-decimal'} pl-5 space-y-1`}>
+              {block.items.map((item, j) => (
+                <li key={j}>{renderInline(item)}</li>
+              ))}
+            </List>
+          )
+        }
+        if (block.kind === 'h') {
+          return (
+            <p key={i} className="font-semibold">
+              {renderInline(block.items[0])}
+            </p>
+          )
+        }
+        if (block.kind === 'table') {
+          const [head, ...rows] = block.items
+          return (
+            <div key={i} className="overflow-x-auto">
+              <table className="text-body-sm border-collapse">
+                <thead>
+                  <tr>
+                    {head.map((cell, j) => (
+                      <th key={j} className="text-left font-semibold border-b border-outline-variant px-2 py-1">
+                        {renderInline(cell)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, r) => (
+                    <tr key={r}>
+                      {row.map((cell, j) => (
+                        <td key={j} className="border-b border-outline-variant px-2 py-1 align-top">
+                          {renderInline(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+        return (
+          <p key={i}>
+            {block.items.map((line, j) => (
+              <span key={j}>
+                {j > 0 && <br />}
+                {renderInline(line)}
+              </span>
+            ))}
+          </p>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function ChatWidget() {
@@ -171,7 +290,7 @@ export default function ChatWidget() {
                         ) : m.error ? (
                           <p className="text-alert-crimson">Something went wrong. Please try again.</p>
                         ) : (
-                          <div dangerouslySetInnerHTML={renderHtml(m.content)} />
+                          <Markdown text={m.content} />
                         )}
                       </div>
                     </div>
