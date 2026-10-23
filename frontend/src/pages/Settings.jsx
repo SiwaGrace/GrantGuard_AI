@@ -99,7 +99,7 @@ export default function Settings() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
               <div className="md:col-span-4 flex flex-col items-center md:items-start border-b md:border-b-0 md:border-r border-outline-variant pb-6 md:pb-0 md:pr-8">
                 <span className="font-label-caps text-label-caps text-secondary mb-4 uppercase">
-                  Entity Mark
+                  Logo
                 </span>
                 <label className="w-32 h-32 rounded-full border-2 border-dashed border-outline-variant flex flex-col items-center justify-center bg-surface-container hover:bg-surface-container-high transition-colors cursor-pointer relative overflow-hidden group mb-4">
                   {form.logoDataUrl ? (

@@ -141,8 +141,8 @@ export default function Alerts() {
               Critical Compliance Alerts
             </h2>
             <p className="text-body-md text-body-md text-secondary max-w-2xl">
-              Portfolio-wide obligations requiring immediate review or intervention. Data is
-              extracted directly from source agreements.
+              Obligations across all your grants that still need a review. Each one is taken
+              straight from the grant agreement it came from.
             </p>
           </div>
           <div className="flex items-center gap-2 font-label-caps text-label-caps uppercase flex-wrap">

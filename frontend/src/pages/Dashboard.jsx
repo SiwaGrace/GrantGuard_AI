@@ -345,7 +345,7 @@ export default function Dashboard() {
                 <div className="flex items-end gap-3">
                   <span className="font-display-lg text-display-lg text-warning-ochre">{stats.lowConf}</span>
                   <span className="font-label-caps text-label-caps text-warning-ochre mb-1.5 flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">visibility</span> Needs audit
+                    <span className="material-symbols-outlined text-[14px]">visibility</span> Needs review
                   </span>
                 </div>
               </div>
@@ -419,7 +419,7 @@ export default function Dashboard() {
             {/* Agreements ledger */}
             <section>
               <h3 className="font-label-caps text-label-caps text-secondary mb-4 uppercase tracking-widest">
-                Active Agreements Ledger
+                Your grants
               </h3>
               {visibleGrants.length === 0 ? (
                 <p className="text-body-md text-on-surface-variant bg-surface-container-lowest inkwell-border p-6">
@@ -430,7 +430,7 @@ export default function Dashboard() {
                   {/* Table header */}
                   <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-3 inkwell-border-b bg-surface-container-low">
                     <div className="col-span-4 font-label-caps text-label-caps text-secondary uppercase">Grant ID / Name</div>
-                    <div className="col-span-3 font-label-caps text-label-caps text-secondary uppercase">Donor Entity</div>
+                    <div className="col-span-3 font-label-caps text-label-caps text-secondary uppercase">Funder</div>
                     <div className="col-span-2 font-label-caps text-label-caps text-secondary uppercase">Health</div>
                     <div className="col-span-3 font-label-caps text-label-caps text-secondary uppercase text-right">Next Deadline</div>
                   </div>

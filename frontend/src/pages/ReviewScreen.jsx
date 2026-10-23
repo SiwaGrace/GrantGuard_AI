@@ -643,7 +643,7 @@ export default function ReviewScreen() {
                     className="bg-primary hover:bg-surface-tint text-on-primary font-label-caps text-label-caps px-6 py-3 flex items-center justify-center gap-2 transition-colors w-full sm:w-auto notched-br disabled:opacity-60"
                   >
                     <span className="material-symbols-outlined filled-icon text-[16px]">verified</span>
-                    {verifyingId === detail.id ? 'Resolving…' : 'Resolve Flag'}
+                    {verifyingId === detail.id ? 'Resolving…' : 'Mark as resolved'}
                   </button>
                 )}
                 <button
@@ -658,7 +658,7 @@ export default function ReviewScreen() {
             <div className="w-full md:w-1/2 bg-surface-container-low p-6 md:p-10 flex flex-col relative">
               <h3 className="font-label-caps text-label-caps text-secondary mb-4 flex items-center gap-2 uppercase tracking-widest">
                 <span className="material-symbols-outlined text-[16px]">menu_book</span>
-                The Source Evidence
+                Source clause
               </h3>
 
               {detail.source_excerpt ? (
