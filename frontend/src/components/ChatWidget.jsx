@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 
 const SUGGESTIONS = [
   'How many grants have a due date this week?',
@@ -186,7 +186,7 @@ export default function ChatWidget() {
       const token = authData.session?.access_token
       if (!token) throw new Error('Not authenticated')
 
-      const res = await fetch(`${API_URL}/api/chat`, {
+      const res = await apiFetch(`/api/chat`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -195,7 +195,7 @@ export default function ChatWidget() {
         body: JSON.stringify({ message: content, history }),
       })
 
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Chat request failed')
 
       setMessages((prev) => {

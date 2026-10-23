@@ -43,6 +43,75 @@ async function extractPdfText(buffer) {
   return { numPages, pageTexts, text: pageTexts.join('\n\n') }
 }
 
+// Runs the LLM over the page texts, saves the obligations, and records the
+// outcome on the document row: "extracted" on success, "failed" when the AI
+// call or the save fails or nothing was found (so the dashboard offers Retry).
+// With replaceExisting, the grant's previous obligations are removed only
+// after the new ones are saved, so a failed retry never loses data.
+async function runObligationExtraction({ grantId, documentId, pageTexts, pages, label, replaceExisting = false }) {
+  const paged = buildPagedText(pageTexts)
+  let obligations = []
+  let obligationError = null
+
+  console.log(
+    `[${label}] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${grantId}"`,
+  )
+  try {
+    obligations = await extractObligations(paged.text, { pageCount: pages })
+    console.log(`[${label}] LLM returned ${obligations.length} obligations`)
+  } catch (llmError) {
+    console.error(`[${label}] LLM extraction failed:`, llmError.message)
+    obligationError = `AI extraction failed: ${llmError.message}`
+  }
+
+  if (!obligationError && obligations.length === 0) {
+    obligationError = 'The AI found no obligations in this document.'
+  }
+
+  if (!obligationError) {
+    let previousIds = []
+    if (replaceExisting) {
+      const { data: previous } = await supabaseAdmin
+        .from('obligations')
+        .select('id')
+        .eq('grant_id', grantId)
+      previousIds = (previous || []).map((o) => o.id)
+    }
+
+    const obligationRows = obligations.map((o) => ({
+      grant_id: grantId,
+      type: o.type,
+      description: o.description,
+      due_date: o.due_date || null,
+      source_page: o.source_page,
+      source_excerpt: o.source_excerpt,
+      confidence: o.confidence,
+      status: 'pending_review',
+    }))
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from('obligations')
+      .insert(obligationRows)
+      .select()
+
+    if (insertError) {
+      console.error(`[${label}] Failed to insert obligations:`, insertError.message)
+      obligationError = `Obligations extracted but save failed: ${insertError.message}`
+      obligations = []
+    } else {
+      obligations = inserted || []
+      if (previousIds.length > 0) {
+        await supabaseAdmin.from('obligations').delete().in('id', previousIds)
+      }
+    }
+  }
+
+  const documentStatus = obligationError ? 'failed' : 'extracted'
+  await supabaseAdmin.from('documents').update({ extraction_status: documentStatus }).eq('id', documentId)
+
+  return { obligations, obligationError, truncated: paged.truncated, documentStatus }
+}
+
 function friendlyUploadError(err) {
   if (err.code === 'LIMIT_FILE_SIZE') {
     return 'File is too large (max 15 MB)'
@@ -137,9 +206,11 @@ async function createGrant(req, res) {
     .single()
 
   if (documentError) {
+    // Without a document row the grant would sit in "processing" forever
+    await supabaseAdmin.storage.from(GRANT_DOCUMENTS_BUCKET).remove([filePath])
+    await supabaseAdmin.from('grants').delete().eq('id', grant.id)
     return res.status(500).json({
-      error: `Stored the PDF but could not save the document row: ${documentError.message}`,
-      file_path: filePath,
+      error: `Could not save the document record: ${documentError.message}`,
     })
   }
 
@@ -149,44 +220,17 @@ async function createGrant(req, res) {
   let truncated = false
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    const paged = buildPagedText(pageTexts)
-    truncated = paged.truncated
-    console.log(
-      `[extract] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${name}"`,
-    )
-    try {
-      obligations = await extractObligations(paged.text, { pageCount: pages })
-      console.log(`[extract] LLM returned ${obligations.length} obligations`)
-    } catch (llmError) {
-      console.error('[extract] LLM extraction failed:', llmError.message)
-      obligationError = llmError.message
-    }
-
-    // Save obligations to DB
-    if (obligations.length > 0) {
-      const obligationRows = obligations.map((o) => ({
-        grant_id: grant.id,
-        type: o.type,
-        description: o.description,
-        due_date: o.due_date || null,
-        source_page: o.source_page,
-        source_excerpt: o.source_excerpt,
-        confidence: o.confidence,
-        status: 'pending_review',
-      }))
-
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('obligations')
-        .insert(obligationRows)
-        .select()
-
-      if (insertError) {
-        console.error('Failed to insert obligations:', insertError.message)
-        obligationError = `Obligations extracted but save failed: ${insertError.message}`
-      } else if (inserted) {
-        obligations = inserted
-      }
-    }
+    const result = await runObligationExtraction({
+      grantId: grant.id,
+      documentId: document.id,
+      pageTexts,
+      pages,
+      label: 'extract',
+    })
+    obligations = result.obligations
+    obligationError = result.obligationError
+    truncated = result.truncated
+    document.extraction_status = result.documentStatus
   }
 
   res.status(201).json({
@@ -378,54 +422,14 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
     return res.status(500).json({ error: `PDF parsing failed: ${parseError.message}` })
   }
 
-  await supabaseAdmin
-    .from('documents')
-    .update({ extraction_status: extractionStatus })
-    .eq('id', doc.id)
-
-  let obligations = []
-  let obligationError = null
-  let truncated = false
-
-  if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    const paged = buildPagedText(pageTexts)
-    truncated = paged.truncated
-    console.log(
-      `[retry] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${grantId}"`,
-    )
-    try {
-      obligations = await extractObligations(paged.text, { pageCount: pages })
-      console.log(`[retry] LLM returned ${obligations.length} obligations`)
-    } catch (llmError) {
-      console.error('[retry] LLM extraction failed:', llmError.message)
-      obligationError = llmError.message
-    }
-
-    if (obligations.length > 0) {
-      const obligationRows = obligations.map((o) => ({
-        grant_id: grant.id,
-        type: o.type,
-        description: o.description,
-        due_date: o.due_date || null,
-        source_page: o.source_page,
-        source_excerpt: o.source_excerpt,
-        confidence: o.confidence,
-        status: 'pending_review',
-      }))
-
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('obligations')
-        .insert(obligationRows)
-        .select()
-
-      if (insertError) {
-        console.error('[retry] Failed to insert obligations:', insertError.message)
-        obligationError = `Obligations extracted but save failed: ${insertError.message}`
-      } else if (inserted) {
-        obligations = inserted
-      }
-    }
-  }
+  const { obligations, obligationError, truncated } = await runObligationExtraction({
+    grantId: grant.id,
+    documentId: doc.id,
+    pageTexts,
+    pages,
+    label: 'retry',
+    replaceExisting: true,
+  })
 
   res.json({
     extraction: { status: extractionStatus, pages, characters, truncated },

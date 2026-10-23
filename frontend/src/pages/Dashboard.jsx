@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
@@ -79,12 +79,12 @@ export default function Dashboard() {
     try {
       const { data: authData } = await supabase.auth.getSession()
       const token = authData.session?.access_token
-      const res = await fetch(`${API_URL}/api/grants/${grantId}`, {
+      const res = await apiFetch(`/api/grants/${grantId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) {
-        const payload = await res.json()
+        const payload = await readJson(res)
         throw new Error(payload.error || 'Delete failed')
       }
       toast.success('Grant deleted')
@@ -102,15 +102,16 @@ export default function Dashboard() {
     try {
       const { data: authData } = await supabase.auth.getSession()
       const token = authData.session?.access_token
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/retry`, {
+      const res = await apiFetch(`/api/grants/${grantId}/retry`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Retry failed')
 
       if (payload.obligationError) {
         toast.error(`Retry failed: ${payload.obligationError}`)
+        await loadData()
         return
       }
       if (payload.extraction?.status !== 'extracted') {
@@ -238,7 +239,7 @@ export default function Dashboard() {
 
     load()
     return () => { active = false }
-  }, [user, loadData, location.pathname])
+  }, [user, loadData, location.key])
 
   const visibleGrants = useMemo(() => {
     const q = query.trim().toLowerCase()

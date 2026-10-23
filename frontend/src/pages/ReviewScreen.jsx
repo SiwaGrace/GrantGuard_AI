@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
@@ -70,9 +70,9 @@ export default function ReviewScreen() {
 
   async function fetchShareToken() {
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, { headers })
+      const res = await apiFetch(`/api/grants/${grantId}/share`, { headers })
       if (!res.ok) throw new Error('Could not load share status')
-      const payload = await res.json()
+      const payload = await readJson(res)
       setShareToken(payload.share_token || null)
     } catch (err) {
       toast.error(err.message || 'Could not load share status')
@@ -82,11 +82,11 @@ export default function ReviewScreen() {
   async function handleGenerateShare() {
     setShareBusy(true)
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, {
+      const res = await apiFetch(`/api/grants/${grantId}/share`, {
         method: 'POST',
         headers,
       })
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Could not create share link')
       setShareToken(payload.share_token)
       toast.success('Share link generated')
@@ -100,11 +100,11 @@ export default function ReviewScreen() {
   async function handleRevokeShare() {
     setShareBusy(true)
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share/revoke`, {
+      const res = await apiFetch(`/api/grants/${grantId}/share/revoke`, {
         method: 'POST',
         headers,
       })
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Could not revoke share link')
       setShareToken(null)
       toast.success('Share link revoked')
@@ -133,10 +133,10 @@ export default function ReviewScreen() {
 
     async function load() {
       try {
-        const res = await fetch(`${API_URL}/api/grants/${grantId}/obligations`, {
+        const res = await apiFetch(`/api/grants/${grantId}/obligations`, {
           headers: authHeaders,
         })
-        const payload = await res.json()
+        const payload = await readJson(res)
         if (!active) return
         if (!res.ok) throw new Error(payload.error || 'Failed to load obligations')
         setObligations(payload.obligations || [])
@@ -192,11 +192,11 @@ export default function ReviewScreen() {
         due_date: editForm.due_date || null,
       }
 
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/${obligationId}`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/${obligationId}`,
         { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       )
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Save failed')
 
       setObligations((prev) =>
@@ -215,11 +215,11 @@ export default function ReviewScreen() {
     setConfirming(true)
     setError('')
     try {
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/confirm`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/confirm`,
         { method: 'POST', headers }
       )
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Confirm failed')
 
       setObligations((prev) =>
@@ -237,15 +237,15 @@ export default function ReviewScreen() {
   async function handleVerify(obligationId) {
     setVerifyingId(obligationId)
     try {
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/${obligationId}`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/${obligationId}`,
         {
           method: 'PATCH',
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ verified: true }),
         }
       )
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Verify failed')
 
       setObligations((prev) =>
@@ -285,12 +285,20 @@ export default function ReviewScreen() {
         <div className="max-w-md mx-auto bg-surface-container-lowest inkwell-border notched-card p-6 text-center">
           <span className="material-symbols-outlined text-[40px] text-alert-crimson mb-3">error_outline</span>
           <p className="text-body-md text-on-surface mb-4">{error}</p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br"
-          >
-            BACK TO PORTFOLIO
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br"
+            >
+              TRY AGAIN
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="py-2.5 px-5 border border-outline text-primary font-label-caps text-label-caps tracking-wider hover:bg-surface-container transition-colors notched-br"
+            >
+              BACK TO PORTFOLIO
+            </button>
+          </div>
         </div>
       </AppShell>
     )

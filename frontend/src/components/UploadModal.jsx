@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 
 export default function UploadModal({ open, onClose, onUploaded }) {
   const navigate = useNavigate()
@@ -34,39 +34,37 @@ export default function UploadModal({ open, onClose, onUploaded }) {
       const { data: authData } = await supabase.auth.getSession()
       const token = authData.session?.access_token
 
-      const response = await fetch(`${API_URL}/api/grants`, {
+      const response = await apiFetch('/api/grants', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       })
-      const payload = await response.json()
+      const payload = await readJson(response)
 
       if (!response.ok) {
         throw new Error(payload.error || `Upload failed (${response.status})`)
       }
 
-      if (payload.obligationError) {
-        toast.error(`Upload succeeded but extraction had issues: ${payload.obligationError}`)
-        return
-      }
-
-      if (payload.extraction?.status !== 'extracted') {
-        const reason = payload.extraction?.error
-          ? `PDF could not be parsed: ${payload.extraction.error}`
-          : 'PDF text extraction failed. The file may be a scanned/image PDF.'
-        toast.error(reason)
-        return
-      }
-
-      if (payload.obligations && payload.obligations.length === 0) {
-        toast.error('The AI analyzed the document but found no obligations. The PDF may not contain grant agreement text.')
-        return
-      }
-
+      // The grant now exists on the server, so always close the form:
+      // submitting it again would create a duplicate grant.
       formRef.current?.reset()
-      toast.success('Grant uploaded and analyzed')
       onClose()
       onUploaded?.()
+
+      if (payload.extraction?.status !== 'extracted' || payload.obligationError) {
+        const reason =
+          payload.extraction?.status !== 'extracted'
+            ? 'The PDF text could not be read. It may be a scanned/image PDF.'
+            : payload.obligationError
+        toast.error(`${reason} The grant was saved. Use Retry on the dashboard.`, { duration: 8000 })
+        navigate('/', { state: { refreshedAt: Date.now() } })
+        return
+      }
+
+      if (payload.extraction?.truncated) {
+        toast('This is a long document, so only its first pages were analyzed.', { icon: 'ℹ️', duration: 6000 })
+      }
+      toast.success('Grant uploaded and analyzed')
       navigate(`/grants/${payload.grant.id}/review`, {
         state: { grantName: payload.grant.name },
       })
@@ -144,7 +142,12 @@ export default function UploadModal({ open, onClose, onUploaded }) {
                 />
               </div>
             </div>
-            <div className="md:col-span-12 flex justify-end gap-3 pt-2">
+            <div className="md:col-span-12 flex flex-wrap items-center justify-end gap-3 pt-2">
+              {uploading && (
+                <p role="status" className="mr-auto text-body-sm text-secondary">
+                  Reading the PDF and extracting obligations. This can take up to a minute.
+                </p>
+              )}
               <button
                 type="button"
                 onClick={onClose}
