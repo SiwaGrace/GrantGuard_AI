@@ -106,7 +106,7 @@ export default function SignUp() {
             <div className="space-y-5">
               <div className="flex flex-col gap-1">
                 <label htmlFor="signup-email" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                  Organizational Email
+                  Work Email
                 </label>
                 <input
                   id="signup-email"
@@ -120,7 +120,7 @@ export default function SignUp() {
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor="signup-password" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                  Access Protocol
+                  Password
                 </label>
                 <div className="relative">
                   <input
@@ -146,7 +146,7 @@ export default function SignUp() {
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor="signup-confirm" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                  Verify Protocol
+                  Confirm Password
                 </label>
                 <input
                   id="signup-confirm"
@@ -170,12 +170,12 @@ export default function SignUp() {
                 {submitting ? (
                   <>
                     <span className="w-4 h-4 border-2 border-on-primary/40 border-t-on-primary rounded-full animate-spin" />
-                    ESTABLISHING…
+                    CREATING ACCOUNT…
                   </>
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-[16px]">lock_open</span>
-                    ESTABLISH VAULT
+                    CREATE ACCOUNT
                   </>
                 )}
               </button>
