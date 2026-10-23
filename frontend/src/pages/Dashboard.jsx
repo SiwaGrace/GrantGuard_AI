@@ -71,19 +71,16 @@ export default function Dashboard() {
     window.dispatchEvent(new Event('grantguard:open-upload'))
   }
 
+  const calendarEventCount = buildCalendarEvents(portfolioObligations).length
+
   function exportToCalendar() {
-    const grantNameMap = {}
-    grants.forEach((g) => {
-      grantNameMap[g.id] = g.name
-    })
-    const events = buildCalendarEvents(portfolioObligations, grantNameMap)
-    if (events.length === 0) {
-      toast.error('No dated obligations to export yet.')
-      return
-    }
-    const ics = toIcs(events)
-    downloadIcs('grantguard-deadlines.ics', ics)
-    toast.success(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'} to calendar`)
+    const grantsById = Object.fromEntries(grants.map((g) => [g.id, g]))
+    const events = buildCalendarEvents(portfolioObligations, grantsById)
+    if (events.length === 0) return
+    downloadIcs('grantguard-deadlines.ics', toIcs(events))
+    toast.success(
+      `${events.length} deadline${events.length === 1 ? '' : 's'} exported. Open the file to add them to your calendar.`,
+    )
   }
 
   async function handleDeleteGrant(e, grantId) {
@@ -289,15 +286,23 @@ export default function Dashboard() {
             <div className="w-8 h-8 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase">
               {avatarInitial}
             </div>
-            <button
-              onClick={exportToCalendar}
-              disabled={portfolioObligations.length === 0}
-              className="py-2 px-4 notched-br border border-outline text-primary hover:bg-surface-container transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest disabled:opacity-40"
-              title="Export all dated obligations to a calendar file"
+            <span
+              className="inline-flex"
+              title={
+                !loading && calendarEventCount === 0
+                  ? 'Nothing to add yet: none of your open obligations has a due date.'
+                  : 'Downloads deadlines for Google Calendar, Outlook or Apple Calendar'
+              }
             >
-              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-              Export Calendar
-            </button>
+              <button
+                onClick={exportToCalendar}
+                disabled={calendarEventCount === 0}
+                className="py-2 px-4 notched-br border border-outline text-primary hover:bg-surface-container transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                Add to calendar (.ics)
+              </button>
+            </span>
             <button
               onClick={openUploadModal}
               className="bg-primary text-on-primary py-2 px-4 notched-br hover:bg-surface-tint transition-colors flex items-center gap-2 font-label-caps text-label-caps uppercase tracking-widest"

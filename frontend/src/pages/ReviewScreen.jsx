@@ -51,16 +51,13 @@ export default function ReviewScreen() {
   const [shareBusy, setShareBusy] = useState(false)
 
   function exportToCalendar() {
-    const grantNameMap = { [grantId]: grantName }
-    const events = buildCalendarEvents(obligations, grantNameMap)
-    if (events.length === 0) {
-      toast.error('This grant has no dated obligations to export.')
-      return
-    }
-    const ics = toIcs(events)
+    const events = buildCalendarEvents(obligations, { [grantId]: { ...grant, name: grantName } })
+    if (events.length === 0) return
     const safe = (grantName || 'grant').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    downloadIcs(`grantguard-${safe}-deadlines.ics`, ics)
-    toast.success(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'} to calendar`)
+    downloadIcs(`grantguard-${safe}-deadlines.ics`, toIcs(events))
+    toast.success(
+      `${events.length} deadline${events.length === 1 ? '' : 's'} exported. Open the file to add them to your calendar.`,
+    )
   }
 
   async function fetchShareToken() {
@@ -316,6 +313,7 @@ export default function ReviewScreen() {
   const pendingCount = obligations.filter((o) => o.status === 'pending_review').length
   const flaggedCount = obligations.filter(isFlagged).length
   const overdueCount = obligations.filter((o) => isOverdue(o)).length
+  const calendarEventCount = buildCalendarEvents(obligations).length
   const needsReview = pendingCount > 0 || flaggedCount > 0
 
   if (loading) {
@@ -412,15 +410,23 @@ export default function ReviewScreen() {
               <span className="material-symbols-outlined text-[16px]">visibility</span>
               View Document
             </button>
-            <button
-              onClick={exportToCalendar}
-              disabled={obligations.length === 0}
-              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2 disabled:opacity-40"
-              title="Export this grant's dated obligations to a calendar file"
+            <span
+              className="inline-flex"
+              title={
+                calendarEventCount === 0
+                  ? 'Nothing to add: none of this grant’s open obligations has a due date.'
+                  : 'Downloads deadlines for Google Calendar, Outlook or Apple Calendar'
+              }
             >
-              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-              Export Calendar
-            </button>
+              <button
+                onClick={exportToCalendar}
+                disabled={calendarEventCount === 0}
+                className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                Add to calendar (.ics)
+              </button>
+            </span>
             <button
               onClick={() => {
                 setShareOpen(true)
