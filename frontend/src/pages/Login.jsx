@@ -152,14 +152,6 @@ export default function Login() {
               </Link>
             </div>
           </form>
-
-          <div className="text-center">
-            <p className="text-body-sm text-body-sm text-secondary">
-              By accessing this vault, you agree to the{' '}
-              <Link to="/signup" className="text-primary hover:underline">Audit Logs</Link> &{' '}
-              <Link to="/signup" className="text-primary hover:underline">Terms of Service</Link>.
-            </p>
-          </div>
         </div>
       </div>
     </div>
