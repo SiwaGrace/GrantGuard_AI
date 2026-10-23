@@ -84,7 +84,7 @@ async function createGrant(req, res) {
     await supabaseAdmin.from('grants').delete().eq('id', grant.id)
     return res.status(502).json({
       error: `Could not store the PDF: ${storageError.message}`,
-      hint: 'Does the "grant-documents" bucket exist? Run supabase/migrations/20260822010000_storage_bucket.sql',
+      hint: 'Does the "grant-documents" bucket exist? Run migrations/002_storage_bucket.sql',
     })
   }
 
