@@ -9,12 +9,14 @@ import {
 } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
 import { buildPagedText, extractObligations } from '../lib/groq.js'
+import { findDocumentHints } from '../lib/documentHints.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_BYTES },
   fileFilter(_req, file, cb) {
-    if (file.mimetype === 'application/pdf') {
+    // Some browsers send dragged-in PDFs as application/octet-stream
+    if (file.mimetype === 'application/pdf' || /\.pdf$/i.test(file.originalname || '')) {
       return cb(null, true)
     }
     cb(new Error('Only PDF files are accepted'))
@@ -30,11 +32,11 @@ function sanitizeFileName(name) {
   return base || 'grant.pdf'
 }
 
-async function extractPdfText(buffer) {
+async function extractPdfText(buffer, { maxPages = Infinity } = {}) {
   const doc = await getDocument({ data: new Uint8Array(buffer) }).promise
   const numPages = doc.numPages
   const pageTexts = []
-  for (let i = 1; i <= numPages; i++) {
+  for (let i = 1; i <= Math.min(numPages, maxPages); i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
     const strings = content.items.map((item) => item.str)
@@ -248,6 +250,28 @@ router.post('/grants', requireAuth, (req, res, next) => {
       return res.status(400).json({ error: friendlyUploadError(err) })
     }
     createGrant(req, res).catch(next)
+  })
+})
+
+// ── Pre-fill hints for the upload form (nothing is stored) ──────────
+// Reads the first pages' text and pattern-matches the funder and the
+// grant/reference number. No AI call, so it's fast and costs no tokens.
+router.post('/grants/preview', requireAuth, (req, res, next) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: friendlyUploadError(err) })
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' })
+    }
+    try {
+      const { pageTexts } = await extractPdfText(req.file.buffer, { maxPages: 2 })
+      res.json(findDocumentHints(pageTexts.join('\n')))
+    } catch (parseError) {
+      // An unreadable PDF just means no hints; the real upload reports it
+      console.warn('[preview] Could not read PDF:', parseError.message)
+      res.json({ grant_number: null, funder_name: null })
+    }
   })
 })
 
