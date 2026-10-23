@@ -121,6 +121,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Self-hosted Material Symbols subset containing only the icons the app
+   uses, so icons never depend on Google Fonts. After adding a new icon name,
+   regenerate it with: node scripts/build-icon-font.mjs (from frontend/) */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./assets/fonts/material-symbols-outlined-subset.woff2') format('woff2');
+}
+
 /* Material symbol defaults */
 .material-symbols-outlined {
   font-variation-settings:
