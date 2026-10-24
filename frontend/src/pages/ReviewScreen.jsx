@@ -38,6 +38,8 @@ export default function ReviewScreen() {
 
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({ description: '', due_date: '', type: '' })
+  // "Add date" opens the editor with the date field focused
+  const [editFocusDate, setEditFocusDate] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [confirming, setConfirming] = useState(false)
@@ -161,8 +163,9 @@ export default function ReviewScreen() {
     }
   }, [detail])
 
-  function startEdit(o) {
+  function startEdit(o, { focusDate = false } = {}) {
     setEditingId(o.id)
+    setEditFocusDate(focusDate)
     setEditForm({
       description: o.description,
       due_date: o.due_date || '',
@@ -525,6 +528,7 @@ export default function ReviewScreen() {
                                 <label htmlFor={`edit-desc-${o.id}`} className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Description</label>
                                 <textarea
                                   id={`edit-desc-${o.id}`}
+                                  autoFocus={!editFocusDate}
                                   value={editForm.description}
                                   onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                                   rows={3}
@@ -536,6 +540,7 @@ export default function ReviewScreen() {
                                 <input
                                   id={`edit-due-${o.id}`}
                                   type="date"
+                                  autoFocus={editFocusDate}
                                   value={editForm.due_date}
                                   onChange={(e) => setEditForm((f) => ({ ...f, due_date: e.target.value }))}
                                   className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface"
@@ -620,6 +625,18 @@ export default function ReviewScreen() {
                                     <span className="material-symbols-outlined text-[14px]">event</span>
                                     Add to Google Calendar
                                   </a>
+                                </div>
+                              )}
+                              {!o.due_date && (
+                                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                                  <p className="font-source-code text-source-code text-on-surface-variant">No date found</p>
+                                  <button
+                                    onClick={() => startEdit(o, { focusDate: true })}
+                                    className="inline-flex items-center gap-1 text-body-sm text-primary underline underline-offset-2 hover:text-surface-tint"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                    Add date
+                                  </button>
                                 </div>
                               )}
                               {o.source_excerpt && (

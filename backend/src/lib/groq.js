@@ -1,3 +1,5 @@
+import { dueDateFromText } from './dates.js'
+
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 // ~4 characters per token, so the default keeps a request around 10k input
@@ -14,7 +16,7 @@ Return a JSON object of the form {"grant_number": ..., "funder_name": ..., "obli
 - obligations: an array where each obligation has exactly these fields:
 - type: one of "deadline", "reporting", "eligible_activity", "compliance_condition"
 - description: a clear, concise summary of the obligation (1-2 sentences)
-- due_date: the due date in ISO 8601 format (YYYY-MM-DD) if a specific date is stated, otherwise null
+- due_date: the due date in ISO 8601 format (YYYY-MM-DD). REQUIRED whenever the clause or its table row states an explicit calendar date for the obligation (e.g. "January 15, 2027" -> "2027-01-15", "by May 1, 2027" -> "2027-05-01"). null only when no explicit day, month and year is given (e.g. "quarterly", "within 30 days", "November 2026").
 - source_page: the number N from the nearest "--- Page N ---" marker ABOVE the clause (integer)
 - source_excerpt: the exact clause or sentence from the source text this obligation was extracted from (copy verbatim, without the page marker)
 - confidence: "high" if the obligation is clearly stated, "low" if ambiguous or implied
@@ -26,7 +28,8 @@ Rules:
 4. Eligible activities: any restriction on what funds may/may not be used for.
 5. Compliance conditions: any regulatory, legal, procurement, or policy requirements.
 6. If the text contains no obligations at all, return an empty "obligations" array.
-7. Do NOT invent obligations not present in the text.`
+7. Do NOT invent obligations not present in the text.
+8. Never leave due_date null when source_excerpt contains an explicit date the obligation is due by. Schedule tables count: in a row like "3 $48,000 January 15, 2027 Submission and approval of Q4 progress report", the Q4 report's due_date is "2027-01-15". If a clause gives a period (from X through Y) and a deadline, use the deadline.`
 
 function maxExtractChars() {
   const fromEnv = Number(process.env.MAX_EXTRACT_CHARS)
@@ -240,7 +243,10 @@ function normalizeObligations(parsed, pageCount) {
         typeof item.description === 'string' && item.description.trim()
           ? item.description.trim()
           : `Obligation ${i + 1}`,
-      due_date: normalizeDate(item.due_date),
+      // Fall back to an explicit date in the quote when the model left it out
+      due_date:
+        normalizeDate(item.due_date) ||
+        dueDateFromText(item.source_excerpt, VALID_TYPES.includes(item.type) ? item.type : null),
       source_page: normalizePage(item.source_page, pageCount),
       source_excerpt: typeof item.source_excerpt === 'string' ? item.source_excerpt.trim() : '',
       confidence: VALID_CONFIDENCE.includes(item.confidence) ? item.confidence : 'low',

@@ -10,6 +10,7 @@ import {
 import { requireAuth } from '../middleware/auth.js'
 import { buildPagedText, extractObligations } from '../lib/groq.js'
 import { findDocumentHints } from '../lib/documentHints.js'
+import { fillMissingDueDates } from '../lib/dates.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -351,7 +352,20 @@ router.get('/grants/:id/obligations', requireAuth, async (req, res) => {
     return res.status(500).json({ error: error.message })
   }
 
-  res.json({ obligations })
+  // Obligations extracted before the date fallback existed: take the date
+  // from the quoted clause and save it, so calendars and chat see it too
+  const { rows, filled } = fillMissingDueDates(obligations)
+  for (const o of filled) {
+    const { error: fillError } = await supabaseAdmin
+      .from('obligations')
+      .update({ due_date: o.due_date })
+      .eq('id', o.id)
+      .is('due_date', null)
+    if (fillError) console.warn(`[due_date] Could not save ${o.id}: ${fillError.message}`)
+  }
+  if (filled.length > 0) console.log(`[due_date] Filled ${filled.length} missing due date(s) for grant "${grantId}"`)
+
+  res.json({ obligations: rows })
 })
 
 // ── Update a single obligation (inline edit) ─────────────────────
