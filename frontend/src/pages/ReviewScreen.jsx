@@ -275,7 +275,8 @@ export default function ReviewScreen() {
   }
 
   // Done is separate from confirmed: confirming checks the AI extraction,
-  // done means the report was submitted / the condition was met
+  // done means the report was submitted / the condition was met. Marking
+  // done also approves it (the server sets both); undoing keeps the approval.
   async function handleToggleDone(o) {
     const completed = !isCompleted(o)
     setCompletingId(o.id)
@@ -289,7 +290,15 @@ export default function ReviewScreen() {
       if (!res.ok) throw new Error(payload.error || 'Could not update the obligation')
 
       setObligations((prev) =>
-        prev.map((x) => (x.id === o.id ? { ...x, completed_at: payload.obligation?.completed_at ?? null } : x)),
+        prev.map((x) =>
+          x.id === o.id
+            ? {
+                ...x,
+                completed_at: payload.obligation?.completed_at ?? null,
+                status: payload.obligation?.status ?? (completed ? 'confirmed' : x.status),
+              }
+            : x,
+        ),
       )
       toast.success(completed ? 'Marked as done' : 'Marked as not done')
     } catch (err) {
@@ -659,15 +668,17 @@ export default function ReviewScreen() {
                                 </button>
                                 {o.status === 'pending_review' && (
                                   <>
-                                    <button
-                                      onClick={() => handleApprove(o.id)}
-                                      disabled={approvingId === o.id}
-                                      title="This extraction is correct: start tracking it"
-                                      className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
-                                    >
-                                      <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
-                                      {approvingId === o.id ? 'Approving…' : 'Approve'}
-                                    </button>
+                                    {!isCompleted(o) && (
+                                      <button
+                                        onClick={() => handleApprove(o.id)}
+                                        disabled={approvingId === o.id}
+                                        title="This extraction is correct: start tracking it"
+                                        className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                      >
+                                        <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
+                                        {approvingId === o.id ? 'Approving…' : 'Approve'}
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => startEdit(o)}
                                       title="Fix the AI's extraction before approving"

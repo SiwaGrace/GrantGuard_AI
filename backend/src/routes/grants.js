@@ -393,13 +393,15 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     }
   }
   // "Done" is separate from "confirmed": confirming checks the AI's
-  // extraction, completing records that the obligation was fulfilled
+  // extraction, completing records that the obligation was fulfilled.
+  // Marking it done also approves it; undoing done leaves it approved.
   if (req.body.completed !== undefined) {
     updates.completed_at = req.body.completed ? new Date().toISOString() : null
+    if (req.body.completed) updates.status = 'confirmed'
   }
 
   // Approve (or un-approve) a single extraction
-  if (req.body.status !== undefined) {
+  if (req.body.status !== undefined && !req.body.completed) {
     if (!['pending_review', 'confirmed'].includes(req.body.status)) {
       return res.status(400).json({ error: 'Invalid status' })
     }
