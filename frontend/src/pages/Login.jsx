@@ -65,7 +65,7 @@ export default function Login() {
               Secure Your Compliance Vault
             </h1>
             <p className="text-body-sm text-body-sm text-secondary max-w-[280px] mx-auto">
-              Trusted by NGOs worldwide for traceable grant management.
+              Built for NGO grant compliance — every obligation traced to its source clause.
             </p>
           </div>
 
@@ -84,7 +84,7 @@ export default function Login() {
             <div className="space-y-5">
               <div className="flex flex-col gap-1">
                 <label htmlFor="login-email" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                  Organizational Email
+                  Work Email
                 </label>
                 <input
                   id="login-email"
@@ -98,7 +98,7 @@ export default function Login() {
               </div>
               <div className="flex flex-col gap-1">
                 <label htmlFor="login-password" className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-                  Access Protocol
+                  Password
                 </label>
                 <div className="relative">
                   <input
@@ -134,12 +134,12 @@ export default function Login() {
                 {submitting ? (
                   <>
                     <span className="w-4 h-4 border-2 border-on-primary/40 border-t-on-primary rounded-full animate-spin" />
-                    AUTHENTICATING…
+                    LOGGING IN…
                   </>
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-[16px]">login</span>
-                    AUTHENTICATE
+                    LOG IN
                   </>
                 )}
               </button>
@@ -152,14 +152,6 @@ export default function Login() {
               </Link>
             </div>
           </form>
-
-          <div className="text-center">
-            <p className="text-body-sm text-body-sm text-secondary">
-              By accessing this vault, you agree to the{' '}
-              <Link to="/signup" className="text-primary hover:underline">Audit Logs</Link> &{' '}
-              <Link to="/signup" className="text-primary hover:underline">Terms of Service</Link>.
-            </p>
-          </div>
         </div>
       </div>
     </div>

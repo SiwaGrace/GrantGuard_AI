@@ -70,7 +70,7 @@ export default function SharedGrantSummary() {
 
         {/* Prominent shared-summary notice */}
         <div className="flex items-start gap-3 bg-surface-container-high inkwell-border p-4 mb-8">
-          <span className="material-symbols-outlined text-warning-ochre shrink-0 mt-0.5">info</span>
+          <span className="material-symbols-outlined text-warning-text shrink-0 mt-0.5">info</span>
           <p className="text-body-sm text-on-surface-variant">
             <strong className="text-on-surface">This is a shared compliance summary, not the full grant agreement.</strong>{' '}
             It shows only confirmed obligations for this project. For complete agreement terms,
@@ -107,7 +107,7 @@ export default function SharedGrantSummary() {
                 </div>
                 <div
                   className={`inline-flex items-center gap-2 px-3 py-1.5 border border-outline-variant font-label-caps text-label-caps uppercase ${
-                    data.overall_status === 'on track' ? 'text-primary bg-primary-container' : 'text-warning-ochre bg-surface-container'
+                    data.overall_status === 'on track' ? 'text-primary bg-primary-tint' : 'text-warning-text bg-surface-container'
                   }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">

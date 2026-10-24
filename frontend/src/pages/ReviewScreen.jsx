@@ -2,20 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
-import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
-
-const DUE_SOON_DAYS = 14
-
-function isDueSoon(dueDate) {
-  if (!dueDate) return false
-  const now = new Date()
-  const due = new Date(dueDate)
-  const deadline = new Date(now.getTime() + DUE_SOON_DAYS * 24 * 60 * 60 * 1000)
-  return due >= now && due <= deadline
-}
+import ExportDeadlinesMenu from '../components/ExportDeadlinesMenu'
+import { googleCalendarUrl } from '../lib/deadlineExport'
+import { daysUntil, grantReference, isCompleted, isDueSoon, isFlagged, isOverdue } from '../lib/grantStatus'
+import { supabase } from '../lib/supabase'
 
 const TYPE_LABELS = {
   deadline: 'Deadline',
@@ -25,9 +18,9 @@ const TYPE_LABELS = {
 }
 
 const TYPE_META = {
-  deadline: { icon: 'event', color: 'text-primary', bg: 'bg-primary-container' },
-  reporting: { icon: 'summarize', color: 'text-primary', bg: 'bg-primary-container' },
-  eligible_activity: { icon: 'checklist', color: 'text-warning-ochre', bg: 'bg-surface-container' },
+  deadline: { icon: 'event', color: 'text-primary', bg: 'bg-primary-tint' },
+  reporting: { icon: 'summarize', color: 'text-primary', bg: 'bg-primary-tint' },
+  eligible_activity: { icon: 'checklist', color: 'text-warning-text', bg: 'bg-surface-container' },
   compliance_condition: { icon: 'gavel', color: 'text-alert-crimson', bg: 'bg-error-container' },
 }
 
@@ -38,16 +31,21 @@ export default function ReviewScreen() {
 
   const [loading, setLoading] = useState(true)
   const [obligations, setObligations] = useState([])
-  const [grantName, setGrantName] = useState('')
+  const [grant, setGrant] = useState(null)
+  // Name passed from the previous page shows instantly; the loaded row wins
+  const grantName = grant?.name || window.history.state?.usr?.grantName || ''
   const [error, setError] = useState('')
 
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState({ description: '', due_date: '', type: '' })
+  // "Add date" opens the editor with the date field focused
+  const [editFocusDate, setEditFocusDate] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [confirming, setConfirming] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
   const [verifyingId, setVerifyingId] = useState(null)
+  const [completingId, setCompletingId] = useState(null)
+  const [approvingId, setApprovingId] = useState(null)
 
   const [detail, setDetail] = useState(null)
   const [showDocument, setShowDocument] = useState(false)
@@ -55,24 +53,11 @@ export default function ReviewScreen() {
   const [shareToken, setShareToken] = useState(null)
   const [shareBusy, setShareBusy] = useState(false)
 
-  function exportToCalendar() {
-    const grantNameMap = { [grantId]: grantName }
-    const events = buildCalendarEvents(obligations, grantNameMap)
-    if (events.length === 0) {
-      toast.error('This grant has no dated obligations to export.')
-      return
-    }
-    const ics = toIcs(events)
-    const safe = (grantName || 'grant').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    downloadIcs(`grantguard-${safe}-deadlines.ics`, ics)
-    toast.success(`Exported ${events.length} deadline${events.length === 1 ? '' : 's'} to calendar`)
-  }
-
   async function fetchShareToken() {
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, { headers })
+      const res = await apiFetch(`/api/grants/${grantId}/share`, { headers })
       if (!res.ok) throw new Error('Could not load share status')
-      const payload = await res.json()
+      const payload = await readJson(res)
       setShareToken(payload.share_token || null)
     } catch (err) {
       toast.error(err.message || 'Could not load share status')
@@ -82,11 +67,11 @@ export default function ReviewScreen() {
   async function handleGenerateShare() {
     setShareBusy(true)
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share`, {
+      const res = await apiFetch(`/api/grants/${grantId}/share`, {
         method: 'POST',
         headers,
       })
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Could not create share link')
       setShareToken(payload.share_token)
       toast.success('Share link generated')
@@ -100,11 +85,11 @@ export default function ReviewScreen() {
   async function handleRevokeShare() {
     setShareBusy(true)
     try {
-      const res = await fetch(`${API_URL}/api/grants/${grantId}/share/revoke`, {
+      const res = await apiFetch(`/api/grants/${grantId}/share/revoke`, {
         method: 'POST',
         headers,
       })
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Could not revoke share link')
       setShareToken(null)
       toast.success('Share link revoked')
@@ -133,10 +118,10 @@ export default function ReviewScreen() {
 
     async function load() {
       try {
-        const res = await fetch(`${API_URL}/api/grants/${grantId}/obligations`, {
+        const res = await apiFetch(`/api/grants/${grantId}/obligations`, {
           headers: authHeaders,
         })
-        const payload = await res.json()
+        const payload = await readJson(res)
         if (!active) return
         if (!res.ok) throw new Error(payload.error || 'Failed to load obligations')
         setObligations(payload.obligations || [])
@@ -151,10 +136,19 @@ export default function ReviewScreen() {
     return () => { active = false }
   }, [grantId, session.access_token])
 
+  // Grant details (name, funder, reference number), read directly under RLS
   useEffect(() => {
-    const state = window.history.state?.usr
-    if (state?.grantName) setGrantName(state.grantName)
-  }, [])
+    let active = true
+    supabase
+      .from('grants')
+      .select('*')
+      .eq('id', grantId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data) setGrant(data)
+      })
+    return () => { active = false }
+  }, [grantId])
 
   useEffect(() => {
     if (!detail) return
@@ -169,8 +163,9 @@ export default function ReviewScreen() {
     }
   }, [detail])
 
-  function startEdit(o) {
+  function startEdit(o, { focusDate = false } = {}) {
     setEditingId(o.id)
+    setEditFocusDate(focusDate)
     setEditForm({
       description: o.description,
       due_date: o.due_date || '',
@@ -192,11 +187,11 @@ export default function ReviewScreen() {
         due_date: editForm.due_date || null,
       }
 
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/${obligationId}`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/${obligationId}`,
         { method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
       )
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Save failed')
 
       setObligations((prev) =>
@@ -215,37 +210,57 @@ export default function ReviewScreen() {
     setConfirming(true)
     setError('')
     try {
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/confirm`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/confirm`,
         { method: 'POST', headers }
       )
-      const payload = await res.json()
-      if (!res.ok) throw new Error(payload.error || 'Confirm failed')
+      const payload = await readJson(res)
+      if (!res.ok) throw new Error(payload.error || 'Approve failed')
 
       setObligations((prev) =>
         prev.map((o) => (o.status === 'pending_review' ? { ...o, status: 'confirmed' } : o))
       )
-      setConfirmed(true)
-      toast.success('All obligations confirmed — tracking is active')
+      const n = payload.confirmed ?? pendingCount
+      toast.success(`${n} obligation${n === 1 ? '' : 's'} approved. Their deadlines are now tracked.`)
     } catch (err) {
-      toast.error(err.message || 'Could not confirm obligations')
+      toast.error(err.message || 'Could not approve the obligations')
     } finally {
       setConfirming(false)
+    }
+  }
+
+  // Approve a single extraction (same as Approve all, for one obligation)
+  async function handleApprove(obligationId) {
+    setApprovingId(obligationId)
+    try {
+      const res = await apiFetch(`/api/grants/${grantId}/obligations/${obligationId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'confirmed' }),
+      })
+      const payload = await readJson(res)
+      if (!res.ok) throw new Error(payload.error || 'Approve failed')
+      setObligations((prev) => prev.map((o) => (o.id === obligationId ? { ...o, status: 'confirmed' } : o)))
+      toast.success('Obligation approved and tracked')
+    } catch (err) {
+      toast.error(err.message || 'Could not approve the obligation')
+    } finally {
+      setApprovingId(null)
     }
   }
 
   async function handleVerify(obligationId) {
     setVerifyingId(obligationId)
     try {
-      const res = await fetch(
-        `${API_URL}/api/grants/${grantId}/obligations/${obligationId}`,
+      const res = await apiFetch(
+        `/api/grants/${grantId}/obligations/${obligationId}`,
         {
           method: 'PATCH',
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ verified: true }),
         }
       )
-      const payload = await res.json()
+      const payload = await readJson(res)
       if (!res.ok) throw new Error(payload.error || 'Verify failed')
 
       setObligations((prev) =>
@@ -259,14 +274,50 @@ export default function ReviewScreen() {
     }
   }
 
+  // Done is separate from confirmed: confirming checks the AI extraction,
+  // done means the report was submitted / the condition was met. Marking
+  // done also approves it (the server sets both); undoing keeps the approval.
+  async function handleToggleDone(o) {
+    const completed = !isCompleted(o)
+    setCompletingId(o.id)
+    try {
+      const res = await apiFetch(`/api/grants/${grantId}/obligations/${o.id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed }),
+      })
+      const payload = await readJson(res)
+      if (!res.ok) throw new Error(payload.error || 'Could not update the obligation')
+
+      setObligations((prev) =>
+        prev.map((x) =>
+          x.id === o.id
+            ? {
+                ...x,
+                completed_at: payload.obligation?.completed_at ?? null,
+                status: payload.obligation?.status ?? (completed ? 'confirmed' : x.status),
+              }
+            : x,
+        ),
+      )
+      toast.success(completed ? 'Marked as done' : 'Marked as not done')
+    } catch (err) {
+      toast.error(err.message || 'Could not update the obligation')
+    } finally {
+      setCompletingId(null)
+    }
+  }
+
   const grouped = obligations.reduce((acc, o) => {
     ;(acc[o.type] = acc[o.type] || []).push(o)
     return acc
   }, {})
 
   const pendingCount = obligations.filter((o) => o.status === 'pending_review').length
-  const lowConfidenceCount = obligations.filter((o) => o.confidence === 'low').length
-  const needsReview = pendingCount > 0 || lowConfidenceCount > 0
+  const flaggedCount = obligations.filter(isFlagged).length
+  const overdueCount = obligations.filter((o) => isOverdue(o)).length
+  const needsReview = pendingCount > 0 || flaggedCount > 0
+  const exportGrant = { ...grant, id: grantId, name: grantName }
 
   if (loading) {
     return (
@@ -285,12 +336,20 @@ export default function ReviewScreen() {
         <div className="max-w-md mx-auto bg-surface-container-lowest inkwell-border notched-card p-6 text-center">
           <span className="material-symbols-outlined text-[40px] text-alert-crimson mb-3">error_outline</span>
           <p className="text-body-md text-on-surface mb-4">{error}</p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br"
-          >
-            BACK TO PORTFOLIO
-          </button>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-primary text-on-primary py-2.5 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br"
+            >
+              TRY AGAIN
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="py-2.5 px-5 border border-outline text-primary font-label-caps text-label-caps tracking-wider hover:bg-surface-container transition-colors notched-br"
+            >
+              BACK TO DASHBOARD
+            </button>
+          </div>
         </div>
       </AppShell>
     )
@@ -302,7 +361,7 @@ export default function ReviewScreen() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
           <button onClick={() => navigate('/')} className="hover:text-primary transition-colors">
-            Portfolio
+            Dashboard
           </button>
           <span className="material-symbols-outlined text-[14px]">chevron_right</span>
           <span className="text-primary">{grantName || 'Grant'}</span>
@@ -315,13 +374,19 @@ export default function ReviewScreen() {
               <h1 className="font-headline-lg text-headline-lg text-on-surface">
                 Obligation Review
               </h1>
+              {overdueCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-alert-crimson text-white border border-alert-crimson font-label-caps text-label-caps uppercase">
+                  <span className="material-symbols-outlined text-[14px]">schedule</span>
+                  Overdue ({overdueCount})
+                </span>
+              )}
               {needsReview && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-error-container text-on-error-container border border-outline-variant font-label-caps text-label-caps uppercase">
                   <span className="material-symbols-outlined text-[14px]">flag</span>
                   Needs Review
                 </span>
               )}
-              {confirmed && !needsReview && (
+              {obligations.length > 0 && !needsReview && overdueCount === 0 && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-container text-on-primary-container border border-outline-variant font-label-caps text-label-caps uppercase">
                   <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
                   On Track
@@ -330,6 +395,14 @@ export default function ReviewScreen() {
             </div>
             <p className="text-body-md text-on-surface-variant mt-1">
               {grantName || 'Grant agreement'}
+              {grant && (
+                <>
+                  {grant.funder_name && <span> · {grant.funder_name}</span>}
+                  <span className="ml-2 inline-block whitespace-nowrap font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm text-on-surface-variant">
+                    {grantReference(grant)}
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
@@ -340,15 +413,7 @@ export default function ReviewScreen() {
               <span className="material-symbols-outlined text-[16px]">visibility</span>
               View Document
             </button>
-            <button
-              onClick={exportToCalendar}
-              disabled={obligations.length === 0}
-              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2 disabled:opacity-40"
-              title="Export this grant's dated obligations to a calendar file"
-            >
-              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-              Export Calendar
-            </button>
+            <ExportDeadlinesMenu obligations={obligations} grant={exportGrant} />
             <button
               onClick={() => {
                 setShareOpen(true)
@@ -364,12 +429,12 @@ export default function ReviewScreen() {
               <button
                 onClick={confirmAll}
                 disabled={confirming}
+                title="Confirm the AI's extractions are correct and start tracking deadlines."
+                aria-describedby="approve-all-help"
                 className="bg-primary text-on-primary py-3 px-5 font-label-caps text-label-caps tracking-wider hover:bg-surface-tint transition-colors notched-br disabled:opacity-60 flex items-center gap-2"
               >
                 <span className="material-symbols-outlined filled-icon text-[16px]">check_circle</span>
-                {confirming
-                  ? 'CONFIRMING…'
-                  : `CONFIRM & TRACK (${pendingCount})`}
+                {confirming ? 'APPROVING…' : `APPROVE ALL (${pendingCount})`}
               </button>
             )}
             <button
@@ -377,24 +442,37 @@ export default function ReviewScreen() {
               className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Portfolio
+              Dashboard
             </button>
           </div>
         </header>
 
+        {pendingCount > 0 && (
+          <p id="approve-all-help" className="-mt-4 text-body-sm text-secondary">
+            <span className="font-medium text-on-surface">Approve all</span> confirms the AI&apos;s extractions are
+            correct and starts tracking deadlines. You can also approve or edit each obligation below.
+          </p>
+        )}
+
         {/* Summary line */}
         <p className="text-body-md text-on-surface-variant flex items-center gap-3 flex-wrap">
           {obligations.length} obligation{obligations.length !== 1 ? 's' : ''} extracted
+          {overdueCount > 0 && (
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-1">
+              <span className="material-symbols-outlined text-[14px]">schedule</span>
+              {overdueCount} overdue
+            </span>
+          )}
           {pendingCount > 0 && (
-            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-ochre uppercase bg-surface-container inkwell-border px-2 py-1">
+            <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-warning-text uppercase bg-surface-container inkwell-border px-2 py-1">
               <span className="material-symbols-outlined text-[14px]">visibility</span>
               {pendingCount} pending
             </span>
           )}
-          {lowConfidenceCount > 0 && (
+          {flaggedCount > 0 && (
             <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-1">
               <span className="material-symbols-outlined text-[14px]">gavel</span>
-              {lowConfidenceCount} low confidence
+              {flaggedCount} flagged
             </span>
           )}
         </p>
@@ -426,14 +504,14 @@ export default function ReviewScreen() {
                   </div>
                   <div className="grid grid-cols-1 gap-4">
                     {items.map((o) => {
-                      const flagged = o.confidence === 'low' && !o.verified
+                      const flagged = isFlagged(o)
                       const isConfirmed = o.status === 'confirmed'
                       const isEditing = editingId === o.id
                       return (
                         <div
                           key={o.id}
                           className={`bg-surface-container-lowest inkwell-border p-5 flex flex-col gap-3 notched-card ${
-                            flagged
+                            flagged || isOverdue(o)
                               ? 'border-l-4 border-alert-crimson'
                               : isConfirmed
                                 ? 'border-l-4 border-primary'
@@ -459,6 +537,7 @@ export default function ReviewScreen() {
                                 <label htmlFor={`edit-desc-${o.id}`} className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Description</label>
                                 <textarea
                                   id={`edit-desc-${o.id}`}
+                                  autoFocus={!editFocusDate}
                                   value={editForm.description}
                                   onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
                                   rows={3}
@@ -470,6 +549,7 @@ export default function ReviewScreen() {
                                 <input
                                   id={`edit-due-${o.id}`}
                                   type="date"
+                                  autoFocus={editFocusDate}
                                   value={editForm.due_date}
                                   onChange={(e) => setEditForm((f) => ({ ...f, due_date: e.target.value }))}
                                   className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface"
@@ -496,9 +576,21 @@ export default function ReviewScreen() {
                             <>
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  {isDueSoon(o.due_date) && (
+                                  {isOverdue(o) && (
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-white uppercase bg-alert-crimson px-2 py-0.5 border border-alert-crimson">
+                                      <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                      overdue · {-daysUntil(o.due_date)}d
+                                    </span>
+                                  )}
+                                  {isDueSoon(o) && (
                                     <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-alert-crimson uppercase bg-error-container px-2 py-0.5 border border-outline-variant">
                                       due soon
+                                    </span>
+                                  )}
+                                  {isCompleted(o) && (
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-on-primary uppercase bg-primary px-2 py-0.5 border border-primary">
+                                      <span className="material-symbols-outlined filled-icon text-[14px]">task_alt</span>
+                                      done
                                     </span>
                                   )}
                                   {flagged && (
@@ -507,13 +599,13 @@ export default function ReviewScreen() {
                                     </span>
                                   )}
                                   {o.confidence === 'low' && o.verified && (
-                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-tint px-2 py-0.5 border border-outline-variant">
                                       verified
                                     </span>
                                   )}
                                   {isConfirmed && (
-                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-container px-2 py-0.5 border border-outline-variant">
-                                      confirmed
+                                    <span className="inline-flex items-center gap-1 font-label-caps text-label-caps text-primary uppercase bg-primary-tint px-2 py-0.5 border border-outline-variant">
+                                      approved
                                     </span>
                                   )}
                                   {o.source_page && (
@@ -528,9 +620,33 @@ export default function ReviewScreen() {
                                 {o.description}
                               </p>
                               {o.due_date && (
-                                <p className="font-source-code text-source-code text-on-surface-variant">
-                                  Due: {o.due_date}
-                                </p>
+                                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                                  <p className={`font-source-code text-source-code ${isOverdue(o) ? 'text-alert-crimson font-semibold' : 'text-on-surface-variant'}`}>
+                                    Due: {o.due_date}
+                                    {isCompleted(o) && ` · Done ${new Date(o.completed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                                  </p>
+                                  <a
+                                    href={googleCalendarUrl(o, exportGrant)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-body-sm text-primary underline underline-offset-2 hover:text-surface-tint"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">event</span>
+                                    Add to Google Calendar
+                                  </a>
+                                </div>
+                              )}
+                              {!o.due_date && (
+                                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                                  <p className="font-source-code text-source-code text-on-surface-variant">No date found</p>
+                                  <button
+                                    onClick={() => startEdit(o, { focusDate: true })}
+                                    className="inline-flex items-center gap-1 text-body-sm text-primary underline underline-offset-2 hover:text-surface-tint"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">edit</span>
+                                    Add date
+                                  </button>
+                                </div>
                               )}
                               {o.source_excerpt && (
                                 <blockquote className="border-l-2 border-outline pl-3 text-body-md text-on-surface-variant italic bg-surface-container-low px-3 py-2">
@@ -545,28 +661,55 @@ export default function ReviewScreen() {
                               <div className="flex gap-2 flex-wrap">
                                 <button
                                   onClick={() => setDetail(o)}
-                                  className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                  className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
                                 >
                                   <span className="material-symbols-outlined text-[14px]">plagiarism</span>
                                   Source
                                 </button>
                                 {o.status === 'pending_review' && (
-                                  <button
-                                    onClick={() => startEdit(o)}
-                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
-                                  >
-                                    <span className="material-symbols-outlined text-[14px]">edit</span>
-                                    Edit
-                                  </button>
+                                  <>
+                                    {!isCompleted(o) && (
+                                      <button
+                                        onClick={() => handleApprove(o.id)}
+                                        disabled={approvingId === o.id}
+                                        title="This extraction is correct: start tracking it"
+                                        className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                      >
+                                        <span className="material-symbols-outlined filled-icon text-[14px]">check_circle</span>
+                                        {approvingId === o.id ? 'Approving…' : 'Approve'}
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => startEdit(o)}
+                                      title="Fix the AI's extraction before approving"
+                                      className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors flex items-center gap-1.5"
+                                    >
+                                      <span className="material-symbols-outlined text-[14px]">edit</span>
+                                      Edit
+                                    </button>
+                                  </>
                                 )}
                                 {flagged && (
                                   <button
                                     onClick={() => handleVerify(o.id)}
                                     disabled={verifyingId === o.id}
-                                    className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[10px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                    className="px-3 py-1.5 bg-primary text-on-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-tint transition-colors disabled:opacity-60 flex items-center gap-1.5"
                                   >
                                     <span className="material-symbols-outlined filled-icon text-[14px]">verified</span>
                                     {verifyingId === o.id ? 'Marking…' : 'Mark as reviewed'}
+                                  </button>
+                                )}
+                                {(o.due_date || o.type === 'deadline' || o.type === 'reporting') && (
+                                  <button
+                                    onClick={() => handleToggleDone(o)}
+                                    disabled={completingId === o.id}
+                                    aria-pressed={isCompleted(o)}
+                                    className="px-3 py-1.5 border border-outline text-primary font-label-caps text-[12px] uppercase tracking-wider hover:bg-surface-container transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                                  >
+                                    <span className={`material-symbols-outlined text-[14px] ${isCompleted(o) ? '' : 'filled-icon'}`}>
+                                      {isCompleted(o) ? 'undo' : 'task_alt'}
+                                    </span>
+                                    {completingId === o.id ? 'Saving…' : isCompleted(o) ? 'Mark as not done' : 'Mark as done'}
                                   </button>
                                 )}
                               </div>
@@ -600,7 +743,7 @@ export default function ReviewScreen() {
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-alert-crimson text-[20px]">flag</span>
                   <span className="font-label-caps text-label-caps text-alert-crimson uppercase tracking-widest">
-                    {detail.status === 'confirmed' ? 'Confirmed' : detail.confidence === 'low' ? 'Flagged' : 'Needs Review'}
+                    {detail.status === 'confirmed' ? 'Approved' : isFlagged(detail) ? 'Flagged' : 'Needs Review'}
                   </span>
                 </div>
                 <div className="bg-surface-dim px-2 py-1 flex items-center gap-2 inkwell-border">
@@ -636,7 +779,7 @@ export default function ReviewScreen() {
                     className="bg-primary hover:bg-surface-tint text-on-primary font-label-caps text-label-caps px-6 py-3 flex items-center justify-center gap-2 transition-colors w-full sm:w-auto notched-br disabled:opacity-60"
                   >
                     <span className="material-symbols-outlined filled-icon text-[16px]">verified</span>
-                    {verifyingId === detail.id ? 'Resolving…' : 'Resolve Flag'}
+                    {verifyingId === detail.id ? 'Resolving…' : 'Mark as resolved'}
                   </button>
                 )}
                 <button
@@ -651,7 +794,7 @@ export default function ReviewScreen() {
             <div className="w-full md:w-1/2 bg-surface-container-low p-6 md:p-10 flex flex-col relative">
               <h3 className="font-label-caps text-label-caps text-secondary mb-4 flex items-center gap-2 uppercase tracking-widest">
                 <span className="material-symbols-outlined text-[16px]">menu_book</span>
-                The Source Evidence
+                Source clause
               </h3>
 
               {detail.source_excerpt ? (
