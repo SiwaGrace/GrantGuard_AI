@@ -5,7 +5,8 @@ import { useAuth } from '../context/AuthContext'
 import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
-import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
+import ExportDeadlinesMenu from '../components/ExportDeadlinesMenu'
+import { googleCalendarUrl } from '../lib/deadlineExport'
 import { daysUntil, grantReference, isCompleted, isDueSoon, isFlagged, isOverdue } from '../lib/grantStatus'
 import { supabase } from '../lib/supabase'
 
@@ -49,16 +50,6 @@ export default function ReviewScreen() {
   const [shareOpen, setShareOpen] = useState(false)
   const [shareToken, setShareToken] = useState(null)
   const [shareBusy, setShareBusy] = useState(false)
-
-  function exportToCalendar() {
-    const events = buildCalendarEvents(obligations, { [grantId]: { ...grant, name: grantName } })
-    if (events.length === 0) return
-    const safe = (grantName || 'grant').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    downloadIcs(`grantguard-${safe}-deadlines.ics`, toIcs(events))
-    toast.success(
-      `${events.length} deadline${events.length === 1 ? '' : 's'} exported. Open the file to add them to your calendar.`,
-    )
-  }
 
   async function fetchShareToken() {
     try {
@@ -313,8 +304,8 @@ export default function ReviewScreen() {
   const pendingCount = obligations.filter((o) => o.status === 'pending_review').length
   const flaggedCount = obligations.filter(isFlagged).length
   const overdueCount = obligations.filter((o) => isOverdue(o)).length
-  const calendarEventCount = buildCalendarEvents(obligations).length
   const needsReview = pendingCount > 0 || flaggedCount > 0
+  const exportGrant = { ...grant, id: grantId, name: grantName }
 
   if (loading) {
     return (
@@ -410,23 +401,7 @@ export default function ReviewScreen() {
               <span className="material-symbols-outlined text-[16px]">visibility</span>
               View Document
             </button>
-            <span
-              className="inline-flex"
-              title={
-                calendarEventCount === 0
-                  ? 'Nothing to add: none of this grant’s open obligations has a due date.'
-                  : 'Downloads deadlines for Google Calendar, Outlook or Apple Calendar'
-              }
-            >
-              <button
-                onClick={exportToCalendar}
-                disabled={calendarEventCount === 0}
-                className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                Add to calendar (.ics)
-              </button>
-            </span>
+            <ExportDeadlinesMenu obligations={obligations} grant={exportGrant} />
             <button
               onClick={() => {
                 setShareOpen(true)
@@ -631,10 +606,21 @@ export default function ReviewScreen() {
                                 {o.description}
                               </p>
                               {o.due_date && (
-                                <p className={`font-source-code text-source-code ${isOverdue(o) ? 'text-alert-crimson font-semibold' : 'text-on-surface-variant'}`}>
-                                  Due: {o.due_date}
-                                  {isCompleted(o) && ` · Done ${new Date(o.completed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
-                                </p>
+                                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+                                  <p className={`font-source-code text-source-code ${isOverdue(o) ? 'text-alert-crimson font-semibold' : 'text-on-surface-variant'}`}>
+                                    Due: {o.due_date}
+                                    {isCompleted(o) && ` · Done ${new Date(o.completed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                                  </p>
+                                  <a
+                                    href={googleCalendarUrl(o, exportGrant)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-body-sm text-primary underline underline-offset-2 hover:text-surface-tint"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">event</span>
+                                    Add to Google Calendar
+                                  </a>
+                                </div>
                               )}
                               {o.source_excerpt && (
                                 <blockquote className="border-l-2 border-outline pl-3 text-body-md text-on-surface-variant italic bg-surface-container-low px-3 py-2">

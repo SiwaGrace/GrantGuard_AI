@@ -263,3 +263,82 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-outline);
 }
+/* Printable deadline sheet (ExportDeadlinesMenu). It's mounted on <body>
+   only while printing, and replaces the app on the printed page. */
+.deadline-sheet {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  body:has(> .deadline-sheet) > :not(.deadline-sheet) {
+    display: none !important;
+  }
+  body:has(> .deadline-sheet) {
+    background: #fff;
+  }
+  .deadline-sheet {
+    display: block;
+    color: #000;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+  .deadline-sheet header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+  }
+  .deadline-sheet .sheet-kicker {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 4pt;
+  }
+  .deadline-sheet h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 20pt;
+    font-weight: 500;
+    margin: 0 0 4pt;
+  }
+  .deadline-sheet h2 {
+    font-size: 12pt;
+    margin: 16pt 0 6pt;
+  }
+  .deadline-sheet header p {
+    margin: 0;
+  }
+  .deadline-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .deadline-sheet th,
+  .deadline-sheet td {
+    border-bottom: 1px solid #999;
+    padding: 5pt 6pt 5pt 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .deadline-sheet th {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #000;
+  }
+  .deadline-sheet thead {
+    display: table-header-group;
+  }
+  .deadline-sheet tr {
+    break-inside: avoid;
+  }
+  .deadline-sheet .sheet-date {
+    white-space: nowrap;
+    width: 1%;
+  }
+  .deadline-sheet .sheet-page {
+    width: 1%;
+    text-align: right;
+  }
+}
