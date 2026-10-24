@@ -93,12 +93,13 @@ function Markdown({ text }) {
         if (block.kind === 'table') {
           const [head, ...rows] = block.items
           return (
-            <div key={i} className="overflow-x-auto">
-              <table className="text-[15px] border-collapse">
+            // Scrolls sideways instead of squashing the columns
+            <div key={i} className="overflow-x-auto max-w-full -mx-1 px-1 pb-1">
+              <table className="w-max text-[15px] border-collapse">
                 <thead>
                   <tr>
                     {head.map((cell, j) => (
-                      <th key={j} className="text-left font-semibold border-b border-outline-variant px-2 py-1">
+                      <th key={j} className="text-left font-semibold border-b border-outline-variant px-2 py-1 whitespace-nowrap">
                         {renderInline(cell)}
                       </th>
                     ))}
@@ -108,7 +109,7 @@ function Markdown({ text }) {
                   {rows.map((row, r) => (
                     <tr key={r}>
                       {row.map((cell, j) => (
-                        <td key={j} className="border-b border-outline-variant px-2 py-1 align-top">
+                        <td key={j} className="border-b border-outline-variant px-2 py-1 align-top min-w-[7rem] max-w-[16rem]">
                           {renderInline(cell)}
                         </td>
                       ))}

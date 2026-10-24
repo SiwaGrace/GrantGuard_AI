@@ -1,6 +1,7 @@
 import { safeRouter } from '../lib/safeRouter.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
+import { fillMissingDueDates } from '../lib/dates.js'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
@@ -12,12 +13,30 @@ Answer the user's question using ONLY the data in this snapshot. Be precise and 
 
 Guidelines:
 - Count and arithmetic must be computed exactly from the snapshot. State numbers plainly, e.g. "3 grants" and list them if helpful.
-- For deadline questions, compare dates using CURRENT_DATE. "Tomorrow" = CURRENT_DATE + 1 day. "This week" = 7 days from CURRENT_DATE. "Overdue" = due_date < CURRENT_DATE and not completed (each obligation has an "overdue" flag). "completed" means the grantee marked it done; "review_status" only says whether the AI extraction was checked, not whether the work is done.
-- Reference obligations by their grant name, type, and due date.
+- Dates and statuses come from the snapshot only. Never guess or recompute them:
+  - due_date is the stored due date (YYYY-MM-DD). If it is set, always give it. Never say an obligation has "no fixed date" or "no calendar date" when due_date is set.
+  - If due_date is null, say "no due date in the agreement".
+  - status is one of "done" (the grantee marked it done), "overdue" (past due_date and not done), "approved" (extraction checked, not done yet) or "pending" (extraction not reviewed yet). "done" is true when the work is finished.
+- For deadline questions, compare due_date with CURRENT_DATE. "Tomorrow" = CURRENT_DATE + 1 day. "This week" = the 7 days from CURRENT_DATE.
+- Reference obligations by their grant name, a short name for the obligation, and the due date.
 - Use "you have N grants", not "we".
 - If a question is not about compliance/grants, gently steer back.
 
-Format the answer as short, readable markdown (bullet lists are fine). No JSON.`
+Format:
+- Never use markdown tables, even if asked for one: give the list instead, without commenting on it. No JSON, no headings.
+- Answer in a short bullet list, one obligation per line, written like this:
+  • Q2 progress report: due 1 Sep 2026 (overdue)
+  • Final completion report: due 1 Apr 2027 (approved)
+  • Quarterly narrative reports: no due date in the agreement (pending)
+- Write dates as "1 Sep 2026". Put the status in brackets. Group by grant with a short bold grant name line when there is more than one grant.
+- Keep any sentence before or after the list to one line.`
+
+// Same order as the review screen: done, then overdue, then approved
+function obligationStatus(o, today) {
+  if (o.completed_at) return 'done'
+  if (o.due_date && o.due_date < today) return 'overdue'
+  return o.status === 'confirmed' ? 'approved' : 'pending'
+}
 
 function buildSnapshot(grants, obligationsByGrant) {
   const today = new Date().toISOString().slice(0, 10)
@@ -29,13 +48,14 @@ function buildSnapshot(grants, obligationsByGrant) {
       funder: g.funder_name || null,
       grant_number: g.grant_number || null,
       uploaded: g.created_at ? g.created_at.slice(0, 10) : null,
-      obligations: obs.map((o) => ({
+      // Older rows may lack a due_date the quoted clause states
+      obligations: fillMissingDueDates(obs).rows.map((o) => ({
         type: o.type,
         description: o.description,
         due_date: o.due_date || null,
-        review_status: o.status || null,
-        completed: Boolean(o.completed_at),
-        overdue: Boolean(o.due_date && !o.completed_at && o.due_date < today),
+        status: obligationStatus(o, today),
+        done: Boolean(o.completed_at),
+        approved: o.status === 'confirmed',
         verified: o.verified ?? false,
         confidence: o.confidence || null,
         source_page: o.source_page || null,
