@@ -511,7 +511,7 @@ export default function Dashboard() {
                         className="bg-surface-container-lowest inkwell-border notched-card p-6 flex flex-col hover:bg-surface-container-low transition-colors"
                       >
                         <div className="flex justify-between items-start mb-6">
-                          <span className="bg-surface-container text-on-surface font-source-code text-source-code px-2 py-1 inkwell-border">
+                          <span className="bg-surface-container text-on-surface font-source-code text-source-code px-2 py-1 inkwell-border whitespace-nowrap">
                             § {grantReference(g)}
                           </span>
                           <div className={`flex items-center gap-2 ${health.text}`}>
@@ -622,7 +622,7 @@ export default function Dashboard() {
                             }
                             className="col-span-4 text-left group"
                           >
-                            <span className="font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm mr-2 text-on-surface-variant">
+                            <span className="inline-block whitespace-nowrap font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm mr-2 text-on-surface-variant">
                               {grantReference(g)}
                             </span>
                             <span className="text-body-sm text-body-sm text-on-surface group-hover:text-primary transition-colors">

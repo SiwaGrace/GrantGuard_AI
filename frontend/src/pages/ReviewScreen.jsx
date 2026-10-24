@@ -389,7 +389,7 @@ export default function ReviewScreen() {
               {grant && (
                 <>
                   {grant.funder_name && <span> · {grant.funder_name}</span>}
-                  <span className="ml-2 font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm text-on-surface-variant">
+                  <span className="ml-2 inline-block whitespace-nowrap font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm text-on-surface-variant">
                     {grantReference(grant)}
                   </span>
                 </>

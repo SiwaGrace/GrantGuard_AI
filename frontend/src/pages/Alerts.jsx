@@ -215,7 +215,7 @@ export default function Alerts() {
                       <div className="col-span-3 flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="font-source-code text-source-code text-secondary px-1.5 py-0.5 bg-surface-variant rounded-sm border border-outline-variant/50">
-                            {o.grantRef} · {typeLabel}
+                            <span className="whitespace-nowrap">{o.grantRef}</span> · {typeLabel}
                           </span>
                         </div>
                         <span className="text-body-md text-body-md font-semibold text-on-surface">
