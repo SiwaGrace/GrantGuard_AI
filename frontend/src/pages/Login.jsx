@@ -55,7 +55,7 @@ export default function Login() {
         <div className="absolute top-0 left-0 w-full h-[1px] bg-primary" />
         <div className="absolute top-0 left-0 h-full w-[1px] bg-primary" />
 
-        <div className="p-8 relative z-10 flex flex-col gap-8">
+        <div className="p-6 sm:p-8 relative z-10 flex flex-col gap-8">
           {/* Header */}
           <div className="text-center space-y-4">
             <div className="inline-flex items-center justify-center w-12 h-12 bg-primary-container text-on-primary-container rounded-sm mb-2 border border-outline-variant">
@@ -93,7 +93,7 @@ export default function Login() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="user@ngo.org"
-                  className="bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
+                  className="w-full bg-transparent border-0 border-b border-outline hover:border-primary focus:border-primary focus:outline-none px-0 py-2 font-source-code text-source-code text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
                 />
               </div>
               <div className="flex flex-col gap-1">

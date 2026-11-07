@@ -350,7 +350,7 @@ export default function Dashboard() {
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-primary opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Active Grants</p>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
                   <span className="font-display-lg text-display-lg text-on-surface">{stats.total}</span>
                   <span className="font-label-caps text-label-caps text-primary mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">domain</span> In portfolio
@@ -361,7 +361,7 @@ export default function Dashboard() {
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-alert-crimson opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Overdue</p>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
                   <span className={`font-display-lg text-display-lg ${stats.overdue > 0 ? 'text-alert-crimson' : 'text-on-surface'}`}>
                     {stats.overdue}
                   </span>
@@ -374,7 +374,7 @@ export default function Dashboard() {
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Due Soon ({DUE_SOON_DAYS}d)</p>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
                   <span className="font-display-lg text-display-lg text-warning-text">{stats.dueSoon}</span>
                   <span className="font-label-caps text-label-caps text-warning-text mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">warning</span> Action required
@@ -385,7 +385,7 @@ export default function Dashboard() {
               <div className="bg-surface-container-lowest inkwell-border p-6 notched-card relative overflow-hidden group hover:bg-surface-container-low transition-colors">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-warning-ochre opacity-5 rounded-bl-full transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform" />
                 <p className="font-label-caps text-label-caps text-secondary mb-2 uppercase">Clauses Flagged</p>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
                   <span className="font-display-lg text-display-lg text-warning-text">{stats.lowConf}</span>
                   <span className="font-label-caps text-label-caps text-warning-text mb-1.5 flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">visibility</span> Needs review
@@ -469,7 +469,7 @@ export default function Dashboard() {
 
             {/* Grant list: table or cards */}
             <section>
-              <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
                 <h3 className="font-label-caps text-label-caps text-secondary uppercase tracking-widest">
                   Your grants
                 </h3>
@@ -613,24 +613,24 @@ export default function Dashboard() {
                       const badge = grantStatus(g)
                       const health = HEALTH[badge] || HEALTH.processing
                       return (
-                        <div key={g.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-center hover:bg-surface-container-low transition-colors">
+                        <div key={g.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 px-4 py-4 items-start md:items-center hover:bg-surface-container-low transition-colors">
                           <button
                             onClick={() =>
                               navigate(`/grants/${g.id}/review`, {
                                 state: { grantName: g.name },
                               })
                             }
-                            className="col-span-4 text-left group"
+                            className="col-span-1 md:col-span-4 text-left group min-w-0"
                           >
                             <span className="inline-block whitespace-nowrap font-source-code text-source-code bg-surface-variant px-1.5 py-0.5 rounded-sm mr-2 text-on-surface-variant">
                               {grantReference(g)}
                             </span>
-                            <span className="text-body-sm text-body-sm text-on-surface group-hover:text-primary transition-colors">
+                            <span className="text-body-sm text-body-sm text-on-surface group-hover:text-primary transition-colors break-words">
                               {g.name}
                             </span>
                           </button>
-                          <div className="col-span-3 text-body-sm text-body-sm text-secondary">{g.funder_name || '—'}</div>
-                          <div className="col-span-2">
+                          <div className="col-span-1 md:col-span-3 text-body-sm text-body-sm text-secondary break-words">{g.funder_name || '—'}</div>
+                          <div className="col-span-1 md:col-span-2">
                             <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-surface-container inkwell-border rounded-sm">
                               <span className={`material-symbols-outlined text-[16px] ${health.filled ? 'filled-icon' : ''} ${health.text}`}>
                                 {health.icon}
@@ -638,7 +638,7 @@ export default function Dashboard() {
                               <span className={`font-label-caps text-[12px] uppercase ${health.text}`}>{badge}</span>
                             </span>
                           </div>
-                          <div className="col-span-3 flex items-center justify-between md:justify-end gap-3">
+                          <div className="col-span-1 md:col-span-3 flex flex-wrap items-center justify-between md:justify-end gap-3">
                             <span className={`font-source-code text-source-code ${g.nextDueOverdue || g.nextDueDueSoon ? 'text-alert-crimson' : 'text-on-surface'}`}>
                               {g.nextDue
                                 ? g.nextDue.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })

@@ -359,12 +359,12 @@ export default function ReviewScreen() {
     <AppShell>
       <div className="space-y-8">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
-          <button onClick={() => navigate('/')} className="hover:text-primary transition-colors">
+        <nav className="flex items-center gap-2 min-w-0 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">
+          <button onClick={() => navigate('/')} className="shrink-0 hover:text-primary transition-colors">
             Dashboard
           </button>
-          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span className="text-primary">{grantName || 'Grant'}</span>
+          <span className="material-symbols-outlined shrink-0 text-[14px]">chevron_right</span>
+          <span className="text-primary truncate">{grantName || 'Grant'}</span>
         </nav>
 
         {/* Header */}
@@ -405,7 +405,7 @@ export default function ReviewScreen() {
               )}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:justify-end">
             <button
               onClick={() => setShowDocument(true)}
               className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
@@ -855,7 +855,7 @@ export default function ReviewScreen() {
           aria-label="Share compliance summary"
         >
           <div className="absolute inset-0 bg-black/40" onClick={() => setShareOpen(false)} />
-          <div className="relative w-full max-w-xl bg-surface-container-lowest inkwell-border notched-card shadow-2xl">
+          <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest inkwell-border notched-card shadow-2xl">
             <div className="p-6 md:p-8">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-2">

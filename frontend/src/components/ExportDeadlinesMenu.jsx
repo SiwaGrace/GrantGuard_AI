@@ -126,7 +126,7 @@ export default function ExportDeadlinesMenu({ obligations, grant }) {
             role="menu"
             aria-label="Export deadlines"
             onKeyDown={onMenuKeyDown}
-            className="absolute right-0 mt-2 z-40 w-72 bg-surface-container-lowest inkwell-border shadow-lg py-1"
+            className="absolute right-0 mt-2 z-40 w-72 max-w-[calc(100vw-2rem)] bg-surface-container-lowest inkwell-border shadow-lg py-1"
           >
             <button role="menuitem" onClick={addToGoogle} disabled={openDated.length === 0} className={itemClass}>
               <span className="material-symbols-outlined text-[18px] text-primary mt-0.5">event</span>
@@ -199,7 +199,7 @@ function GoogleImportDialog({ count, onDownload, onClose }) {
       aria-labelledby="google-import-title"
     >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-xl bg-surface-container-lowest inkwell-border notched-card shadow-2xl">
+      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-surface-container-lowest inkwell-border notched-card shadow-2xl">
         <div className="p-6 md:p-8">
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-2">

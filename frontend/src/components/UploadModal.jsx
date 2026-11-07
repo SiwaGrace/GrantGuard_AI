@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
@@ -50,6 +50,16 @@ export default function UploadModal({ open, onClose, onUploaded }) {
   const [phase, setPhase] = useState('form')
   const [progress, setProgress] = useState(0)
   const [failure, setFailure] = useState(null)
+
+  // Stop the page behind the dialog from scrolling on mobile
+  useEffect(() => {
+    if (!open) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [open])
 
   if (!open) return null
 
@@ -208,13 +218,13 @@ export default function UploadModal({ open, onClose, onUploaded }) {
     phase === 'uploading' ? 5 + progress * 25 : phase === 'reading' ? 40 : phase === 'extracting' ? 70 : phase === 'done' ? 100 : 0
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 md:p-8 overflow-y-auto">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 md:p-8 overflow-y-auto overscroll-contain">
       <div className="absolute inset-0 bg-black/40" onClick={close} />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="upload-title"
-        className="relative w-full max-w-2xl bg-surface-container-lowest inkwell-border notched-card shadow-2xl mt-10 md:mt-16"
+        className="relative w-full max-w-2xl my-4 md:my-12 bg-surface-container-lowest inkwell-border notched-card shadow-2xl"
       >
         <div className="absolute inset-0 pointer-events-none opacity-5 blueprint-grid text-primary" />
         <div className="relative p-6 md:p-8">

@@ -167,7 +167,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="pt-4 flex justify-end items-center gap-3">
+                <div className="pt-4 flex flex-wrap justify-end items-center gap-3">
                   <span className="w-8 h-8 rounded-full bg-surface-container-high inkwell-border flex items-center justify-center overflow-hidden font-label-caps text-label-caps text-primary uppercase mr-auto">
                     {avatarInitial}
                   </span>

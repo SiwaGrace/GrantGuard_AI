@@ -169,7 +169,7 @@ export default function AppShell({ children }) {
       {/* Main content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <div className="px-4 sm:px-6 lg:px-10 pt-20 md:pt-0 pb-16 lg:py-10">
+          <div className="px-4 sm:px-6 lg:px-10 pt-20 md:pt-8 lg:py-10 pb-24">
             <div className="max-w-7xl mx-auto">{children}</div>
           </div>
         </div>

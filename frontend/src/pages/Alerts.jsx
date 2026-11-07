@@ -190,7 +190,7 @@ export default function Alerts() {
         ) : (
           <>
             <div className="bg-surface-container-lowest inkwell-border">
-              <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 inkwell-border-b bg-surface-container-low font-label-caps text-label-caps text-secondary uppercase tracking-wider">
+              <div className="hidden md:grid grid-cols-12 gap-4 px-4 sm:px-6 py-3 inkwell-border-b bg-surface-container-low font-label-caps text-label-caps text-secondary uppercase tracking-wider">
                 <div className="col-span-3">Grant / Ref ID</div>
                 <div className="col-span-2">Status</div>
                 <div className="col-span-5">Flagged Issue</div>
@@ -210,26 +210,26 @@ export default function Alerts() {
                   return (
                     <div
                       key={o.id}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-center px-6 py-4 hover:bg-surface-container-low transition-colors"
+                      className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 items-start md:items-center px-4 sm:px-6 py-4 hover:bg-surface-container-low transition-colors"
                     >
-                      <div className="col-span-3 flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
+                      <div className="col-span-1 md:col-span-3 flex flex-col gap-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-source-code text-source-code text-secondary px-1.5 py-0.5 bg-surface-variant rounded-sm border border-outline-variant/50">
                             <span className="whitespace-nowrap">{o.grantRef}</span> · {typeLabel}
                           </span>
                         </div>
-                        <span className="text-body-md text-body-md font-semibold text-on-surface">
+                        <span className="text-body-md text-body-md font-semibold text-on-surface break-words">
                           {o.grantName}
                         </span>
                       </div>
-                      <div className={`col-span-2 flex items-center gap-1.5 font-label-caps text-label-caps font-bold uppercase ${meta.color}`}>
+                      <div className={`col-span-1 md:col-span-2 flex items-center gap-1.5 font-label-caps text-label-caps font-bold uppercase ${meta.color}`}>
                         <span className={`material-symbols-outlined text-[18px] ${meta.fill ? 'filled-icon' : ''}`}>
                           {meta.icon}
                         </span>
                         {meta.label}
                       </div>
-                      <div className="col-span-5 pr-4">
-                        <p className="text-body-sm text-body-sm text-on-surface-variant leading-snug">
+                      <div className="col-span-1 md:col-span-5 pr-0 md:pr-4 min-w-0">
+                        <p className="text-body-sm text-body-sm text-on-surface-variant leading-snug break-words">
                           {o.description}
                         </p>
                         {due && (
@@ -238,7 +238,7 @@ export default function Alerts() {
                           </p>
                         )}
                       </div>
-                      <div className="col-span-2 flex justify-end">
+                      <div className="col-span-1 md:col-span-2 flex justify-start md:justify-end">
                         <button
                           onClick={() =>
                             navigate(`/grants/${o.grant_id}/review`, {
@@ -257,7 +257,7 @@ export default function Alerts() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-secondary text-body-sm text-body-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-secondary text-body-sm text-body-sm">
               <span>
                 Showing {(page - 1) * PAGE_SIZE + 1} to{' '}
                 {Math.min(page * PAGE_SIZE, visible.length)} of {visible.length} alerts
