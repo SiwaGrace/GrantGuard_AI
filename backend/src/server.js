@@ -34,75 +34,26 @@ app.get('/health', (_req, res) => {
   })
 })
 
-app.get('/api/diagnose', async (_req, res) => {
-  const results = { checks: [] }
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found' })
+})
 
-  results.checks.push({
-    name: 'GROQ_API_KEY',
-    ok: !!process.env.GROQ_API_KEY,
-    detail: process.env.GROQ_API_KEY ? `starts with ${process.env.GROQ_API_KEY.slice(0, 12)}...` : 'MISSING',
-  })
+// Every error ends as JSON, so the frontend can show a real message instead
+// of failing to parse Express's default HTML error page.
+app.use((err, req, res, _next) => {
+  const status = err.status || err.statusCode || 500
+  console.error(`[error] ${req.method} ${req.originalUrl}: ${err.message}`)
+  if (res.headersSent) return
+  let message = 'Something went wrong on the server. Please try again.'
+  if (status === 413) message = 'The request is too large.'
+  else if (err.type === 'entity.parse.failed') message = 'The request body isn’t valid JSON.'
+  else if (status < 500 && err.expose) message = err.message
+  res.status(status).json({ error: message })
+})
 
-  results.checks.push({
-    name: 'SUPABASE_URL',
-    ok: !!process.env.SUPABASE_URL,
-    detail: process.env.SUPABASE_URL || 'MISSING',
-  })
-
-  results.checks.push({
-    name: 'SUPABASE_SERVICE_ROLE_KEY',
-    ok: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    detail: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'set' : 'MISSING',
-  })
-
-  results.checks.push({
-    name: 'CORS_ORIGIN',
-    ok: !!process.env.CORS_ORIGIN,
-    detail: process.env.CORS_ORIGIN || 'not set (only localhost allowed)',
-  })
-
-  try {
-    const testText = 'The Grantee shall submit quarterly reports within 30 days of each quarter end. All funds must be used for WASH activities. The project must be completed by December 31, 2026.'
-    const { extractObligations } = await import('./lib/groq.js')
-    const obligations = await extractObligations(testText)
-    results.checks.push({
-      name: 'LLM Extraction',
-      ok: obligations.length > 0,
-      detail: `returned ${obligations.length} obligations from test text`,
-    })
-  } catch (err) {
-    results.checks.push({
-      name: 'LLM Extraction',
-      ok: false,
-      detail: err.message,
-    })
-  }
-
-  try {
-    const { supabaseAdmin } = await import('./lib/supabaseAdmin.js')
-    const { error } = await supabaseAdmin.from('obligations').select('id').limit(1)
-    if (error) {
-      results.checks.push({
-        name: 'Obligations Table',
-        ok: false,
-        detail: error.message,
-      })
-    } else {
-      results.checks.push({
-        name: 'Obligations Table',
-        ok: true,
-        detail: 'table exists and is queryable',
-      })
-    }
-  } catch (err) {
-    results.checks.push({
-      name: 'Obligations Table',
-      ok: false,
-      detail: err.message,
-    })
-  }
-
-  res.json(results)
+// Log stray rejections instead of letting them kill the server
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason)
 })
 
 const port = Number(process.env.PORT) || 4000

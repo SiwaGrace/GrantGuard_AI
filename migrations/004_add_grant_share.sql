@@ -100,7 +100,7 @@ grant execute on function public.grant_summary_status(uuid) to service_role;
 
 -- 5) Defense in depth: the anon role must NOT be able to SELECT from
 --    grants/obligations directly. That is provided by
---    `migrations/20260830_rls_enable.sql` (enable RLS + owner policies),
+--    `migrations/003_rls_enable.sql` (enable RLS + owner policies),
 --    which must be applied BEFORE this file. With RLS on and no anon
 --    policy, anonymous users are denied all direct table access and can
 --    only read through the anon_grant_summary() function above.

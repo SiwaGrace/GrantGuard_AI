@@ -2,8 +2,8 @@
 // FEATURE 2 — End-to-end security verification for the shareable summary.
 //
 // IMPORTANT: Run these in the Supabase dashboard SQL editor FIRST, in order:
-//   1) migrations/20260830_rls_enable.sql        (enable RLS + owner policies)
-//   2) migrations/20260830_add_grant_share.sql   (share_token + anon fn)
+//   1) migrations/003_rls_enable.sql            (enable RLS + owner policies)
+//   2) migrations/004_add_grant_share.sql       (share_token + anon fn)
 // This script then proves the anon (no-login) path is narrowly scoped and
 // that revoke works.
 //

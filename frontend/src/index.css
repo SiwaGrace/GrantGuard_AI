@@ -55,6 +55,10 @@
   --color-inverse-on-surface: #eef1f4;
 
   --color-warning-ochre: #d4a373;
+  /* Text-safe variants (WCAG AA 4.5:1 on all light surfaces): the ochre
+     above is too light for text, and primary-container is a dark teal */
+  --color-warning-text: #875611;
+  --color-primary-tint: #d5f2f4;
   --color-alert-crimson: #9b2226;
   --color-safety-teal: #008080;
 
@@ -74,10 +78,13 @@
   --font-body-sm: 'Inter', system-ui, sans-serif;
 
   /* Type scale (match UI.md: label-caps / headline / body / source / display) */
-  --text-label-caps: 11px;
+  --text-label-caps: 12px;
   --text-label-caps--line-height: 1.2;
-  --text-label-caps--letter-spacing: 0.05em;
+  --text-label-caps--letter-spacing: 0.08em;
   --text-label-caps--font-weight: 600;
+
+  /* Wider default tracking so small uppercase mono labels stay readable */
+  --tracking-wider: 0.08em;
 
   --text-headline-lg-mobile: 24px;
   --text-headline-lg-mobile--line-height: 1.2;
@@ -116,6 +123,17 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Self-hosted Material Symbols subset containing only the icons the app
+   uses, so icons never depend on Google Fonts. After adding a new icon name,
+   regenerate it with: node scripts/build-icon-font.mjs (from frontend/) */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./assets/fonts/material-symbols-outlined-subset.woff2') format('woff2');
 }
 
 /* Material symbol defaults */
@@ -181,6 +199,35 @@ body {
   );
 }
 
+/* clip-path slices the border off along each cut, leaving the outline open
+   at the notch. On bordered elements, redraw that edge as a 1px diagonal:
+   a gradient sized to the cut corner whose 50% line is exactly the cut,
+   coloured for 1px on the inside of it. */
+.notched-card:is(.inkwell-border, .border),
+.notched-br:is(.inkwell-border, .border) {
+  --notch-line: var(--color-outline);
+  --notch-edge: transparent 50%, var(--notch-line) 50%, var(--notch-line) calc(50% + 1px),
+    transparent calc(50% + 1px);
+  background-origin: border-box;
+  background-repeat: no-repeat;
+}
+.notched-card.border-outline-variant,
+.notched-br.border-outline-variant {
+  --notch-line: var(--color-outline-variant);
+}
+.notched-card:is(.inkwell-border, .border) {
+  background-image:
+    linear-gradient(to bottom right, var(--notch-edge)),
+    linear-gradient(to top left, var(--notch-edge));
+  background-size: 10px 10px;
+  background-position: left top, right bottom;
+}
+.notched-br:is(.inkwell-border, .border) {
+  background-image: linear-gradient(to top left, var(--notch-edge));
+  background-size: 16px 16px;
+  background-position: right bottom;
+}
+
 /* Dashed clause connector (UI.md) */
 .dashed-clause-path {
   background-image: linear-gradient(
@@ -215,4 +262,83 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-outline);
+}
+/* Printable deadline sheet (ExportDeadlinesMenu). It's mounted on <body>
+   only while printing, and replaces the app on the printed page. */
+.deadline-sheet {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  body:has(> .deadline-sheet) > :not(.deadline-sheet) {
+    display: none !important;
+  }
+  body:has(> .deadline-sheet) {
+    background: #fff;
+  }
+  .deadline-sheet {
+    display: block;
+    color: #000;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+  .deadline-sheet header {
+    border-bottom: 2px solid #000;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+  }
+  .deadline-sheet .sheet-kicker {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 4pt;
+  }
+  .deadline-sheet h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 20pt;
+    font-weight: 500;
+    margin: 0 0 4pt;
+  }
+  .deadline-sheet h2 {
+    font-size: 12pt;
+    margin: 16pt 0 6pt;
+  }
+  .deadline-sheet header p {
+    margin: 0;
+  }
+  .deadline-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .deadline-sheet th,
+  .deadline-sheet td {
+    border-bottom: 1px solid #999;
+    padding: 5pt 6pt 5pt 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .deadline-sheet th {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #000;
+  }
+  .deadline-sheet thead {
+    display: table-header-group;
+  }
+  .deadline-sheet tr {
+    break-inside: avoid;
+  }
+  .deadline-sheet .sheet-date {
+    white-space: nowrap;
+    width: 1%;
+  }
+  .deadline-sheet .sheet-page {
+    width: 1%;
+    text-align: right;
+  }
 }

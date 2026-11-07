@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { Router } from 'express'
+import { safeRouter } from '../lib/safeRouter.js'
 import multer from 'multer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
@@ -8,20 +8,23 @@ import {
   MAX_FILE_BYTES,
 } from '../lib/supabaseAdmin.js'
 import { requireAuth } from '../middleware/auth.js'
-import { extractObligations } from '../lib/groq.js'
+import { buildPagedText, extractObligations } from '../lib/groq.js'
+import { findDocumentHints } from '../lib/documentHints.js'
+import { fillMissingDueDates } from '../lib/dates.js'
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_BYTES },
   fileFilter(_req, file, cb) {
-    if (file.mimetype === 'application/pdf') {
+    // Some browsers send dragged-in PDFs as application/octet-stream
+    if (file.mimetype === 'application/pdf' || /\.pdf$/i.test(file.originalname || '')) {
       return cb(null, true)
     }
     cb(new Error('Only PDF files are accepted'))
   },
 })
 
-const router = Router()
+const router = safeRouter()
 
 function sanitizeFileName(name) {
   const base = name
@@ -30,17 +33,123 @@ function sanitizeFileName(name) {
   return base || 'grant.pdf'
 }
 
-async function extractPdfText(buffer) {
+async function extractPdfText(buffer, { maxPages = Infinity } = {}) {
   const doc = await getDocument({ data: new Uint8Array(buffer) }).promise
   const numPages = doc.numPages
   const pageTexts = []
-  for (let i = 1; i <= numPages; i++) {
+  for (let i = 1; i <= Math.min(numPages, maxPages); i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
     const strings = content.items.map((item) => item.str)
     pageTexts.push(strings.join(' '))
   }
-  return { numPages, text: pageTexts.join('\n\n') }
+  return { numPages, pageTexts, text: pageTexts.join('\n\n') }
+}
+
+// Stores the agreement's own reference number. Non-fatal, so uploads keep
+// working on databases that haven't run migrations/006_grant_number.sql.
+async function saveGrantNumber(grantId, grantNumber) {
+  if (!grantNumber) return null
+  const { error } = await supabaseAdmin.from('grants').update({ grant_number: grantNumber }).eq('id', grantId)
+  if (error) {
+    console.warn(`[grant_number] Not saved (run migrations/006_grant_number.sql?): ${error.message}`)
+    return null
+  }
+  return grantNumber
+}
+
+// Runs the LLM over the page texts, saves the obligations, and records the
+// outcome on the document row: "extracted" on success, "failed" when the AI
+// call or the save fails or nothing was found (so the dashboard offers Retry).
+// With replaceExisting, the grant's previous obligations are removed only
+// after the new ones are saved, so a failed retry never loses data.
+// The grant number is taken from the AI, then the form's hint, then a
+// pattern match on the first pages.
+async function runObligationExtraction({
+  grantId,
+  documentId,
+  pageTexts,
+  pages,
+  label,
+  replaceExisting = false,
+  fallbackGrantNumber = null,
+}) {
+  const paged = buildPagedText(pageTexts)
+  let obligations = []
+  let obligationError = null
+  let details = { grantNumber: null, funderName: null }
+
+  console.log(
+    `[${label}] Sending ${paged.text.length} chars (${paged.pagesIncluded}/${pages} pages) to LLM for grant "${grantId}"`,
+  )
+  try {
+    const result = await extractObligations(paged.text, { pageCount: pages })
+    obligations = result.obligations
+    details = { grantNumber: result.grantNumber, funderName: result.funderName }
+    console.log(`[${label}] LLM returned ${obligations.length} obligations (grant number: ${details.grantNumber || 'none'})`)
+  } catch (llmError) {
+    console.error(`[${label}] LLM extraction failed:`, llmError.message)
+    obligationError = `AI extraction failed: ${llmError.message}`
+  }
+
+  if (!obligationError && obligations.length === 0) {
+    obligationError = 'The AI found no obligations in this document.'
+  }
+
+  if (!obligationError) {
+    let previousIds = []
+    if (replaceExisting) {
+      const { data: previous } = await supabaseAdmin
+        .from('obligations')
+        .select('id')
+        .eq('grant_id', grantId)
+      previousIds = (previous || []).map((o) => o.id)
+    }
+
+    const obligationRows = obligations.map((o) => ({
+      grant_id: grantId,
+      type: o.type,
+      description: o.description,
+      due_date: o.due_date || null,
+      source_page: o.source_page,
+      source_excerpt: o.source_excerpt,
+      confidence: o.confidence,
+      status: 'pending_review',
+    }))
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from('obligations')
+      .insert(obligationRows)
+      .select()
+
+    if (insertError) {
+      console.error(`[${label}] Failed to insert obligations:`, insertError.message)
+      obligationError = `Obligations extracted but save failed: ${insertError.message}`
+      obligations = []
+    } else {
+      obligations = inserted || []
+      if (previousIds.length > 0) {
+        await supabaseAdmin.from('obligations').delete().in('id', previousIds)
+      }
+    }
+  }
+
+  const documentStatus = obligationError ? 'failed' : 'extracted'
+  await supabaseAdmin.from('documents').update({ extraction_status: documentStatus }).eq('id', documentId)
+
+  const grantNumber = await saveGrantNumber(
+    grantId,
+    details.grantNumber || fallbackGrantNumber || findDocumentHints(pageTexts.slice(0, 2).join(' ')).grant_number,
+  )
+
+  return {
+    obligations,
+    obligationError,
+    truncated: paged.truncated,
+    documentStatus,
+    grantNumber,
+    funderName: details.funderName,
+  }
 }
 
 function friendlyUploadError(err) {
@@ -84,7 +193,7 @@ async function createGrant(req, res) {
     await supabaseAdmin.from('grants').delete().eq('id', grant.id)
     return res.status(502).json({
       error: `Could not store the PDF: ${storageError.message}`,
-      hint: 'Does the "grant-documents" bucket exist? Run supabase/migrations/20260822010000_storage_bucket.sql',
+      hint: 'Does the "grant-documents" bucket exist? Run migrations/002_storage_bucket.sql',
     })
   }
 
@@ -94,10 +203,12 @@ async function createGrant(req, res) {
   let characters = null
   let preview = ''
   let extractedText = ''
+  let pageTexts = []
 
   try {
     const parsed = await extractPdfText(file.buffer)
     extractedText = parsed.text
+    pageTexts = parsed.pageTexts
     pages = parsed.numPages
     characters = parsed.text.length
     preview = parsed.text.replace(/\s+/g, ' ').trim().slice(0, 500)
@@ -135,68 +246,83 @@ async function createGrant(req, res) {
     .single()
 
   if (documentError) {
+    // Without a document row the grant would sit in "processing" forever
+    await supabaseAdmin.storage.from(GRANT_DOCUMENTS_BUCKET).remove([filePath])
+    await supabaseAdmin.from('grants').delete().eq('id', grant.id)
     return res.status(500).json({
-      error: `Stored the PDF but could not save the document row: ${documentError.message}`,
-      file_path: filePath,
+      error: `Could not save the document record: ${documentError.message}`,
     })
   }
 
   // Step 2: If text extraction succeeded, run LLM obligation extraction
   let obligations = []
   let obligationError = null
+  let truncated = false
+  let detectedFunder = null
 
   if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    console.log(`[extract] Sending ${extractedText.length} chars to LLM for grant "${name}"`)
-    try {
-      obligations = await extractObligations(extractedText)
-      console.log(`[extract] LLM returned ${obligations.length} obligations`)
-    } catch (llmError) {
-      console.error('[extract] LLM extraction failed:', llmError.message)
-      obligationError = llmError.message
-    }
-
-    // Save obligations to DB
-    if (obligations.length > 0) {
-      const obligationRows = obligations.map((o) => ({
-        grant_id: grant.id,
-        type: o.type,
-        description: o.description,
-        due_date: o.due_date || null,
-        source_page: o.source_page,
-        source_excerpt: o.source_excerpt,
-        confidence: o.confidence,
-        status: 'pending_review',
-      }))
-
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('obligations')
-        .insert(obligationRows)
-        .select()
-
-      if (insertError) {
-        console.error('Failed to insert obligations:', insertError.message)
-        obligationError = `Obligations extracted but save failed: ${insertError.message}`
-      } else if (inserted) {
-        obligations = inserted
-      }
-    }
+    const result = await runObligationExtraction({
+      grantId: grant.id,
+      documentId: document.id,
+      pageTexts,
+      pages,
+      label: 'extract',
+      fallbackGrantNumber: (req.body.grant_number || '').trim().slice(0, 60) || null,
+    })
+    obligations = result.obligations
+    obligationError = result.obligationError
+    truncated = result.truncated
+    document.extraction_status = result.documentStatus
+    if (result.grantNumber) grant.grant_number = result.grantNumber
+    detectedFunder = result.funderName
   }
 
   res.status(201).json({
     grant,
     document,
-    extraction: { status: extractionStatus, pages, characters, preview, error: extractionError },
+    extraction: {
+      status: extractionStatus,
+      pages,
+      characters,
+      preview,
+      truncated,
+      error: extractionError,
+      grant_number: grant.grant_number || null,
+      funder_name: detectedFunder,
+    },
     obligations,
     obligationError,
   })
 }
 
-router.post('/grants', requireAuth, (req, res) => {
+router.post('/grants', requireAuth, (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       return res.status(400).json({ error: friendlyUploadError(err) })
     }
-    createGrant(req, res)
+    createGrant(req, res).catch(next)
+  })
+})
+
+// ── Pre-fill hints for the upload form (nothing is stored) ──────────
+// Reads the first pages' text and pattern-matches the funder and the
+// grant/reference number. No AI call, so it's fast and costs no tokens.
+router.post('/grants/preview', requireAuth, (req, res, next) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: friendlyUploadError(err) })
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' })
+    }
+    try {
+      const { pageTexts } = await extractPdfText(req.file.buffer, { maxPages: 2 })
+      res.json(findDocumentHints(pageTexts.join('\n')))
+    } catch (parseError) {
+      // An unreadable PDF just means no hints; the real upload reports it
+      console.warn('[preview] Could not read PDF:', parseError.message)
+      res.json({ grant_number: null, funder_name: null })
+    }
   })
 })
 
@@ -226,7 +352,20 @@ router.get('/grants/:id/obligations', requireAuth, async (req, res) => {
     return res.status(500).json({ error: error.message })
   }
 
-  res.json({ obligations })
+  // Obligations extracted before the date fallback existed: take the date
+  // from the quoted clause and save it, so calendars and chat see it too
+  const { rows, filled } = fillMissingDueDates(obligations)
+  for (const o of filled) {
+    const { error: fillError } = await supabaseAdmin
+      .from('obligations')
+      .update({ due_date: o.due_date })
+      .eq('id', o.id)
+      .is('due_date', null)
+    if (fillError) console.warn(`[due_date] Could not save ${o.id}: ${fillError.message}`)
+  }
+  if (filled.length > 0) console.log(`[due_date] Filled ${filled.length} missing due date(s) for grant "${grantId}"`)
+
+  res.json({ obligations: rows })
 })
 
 // ── Update a single obligation (inline edit) ─────────────────────
@@ -253,6 +392,21 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
       updates[key] = req.body[key]
     }
   }
+  // "Done" is separate from "confirmed": confirming checks the AI's
+  // extraction, completing records that the obligation was fulfilled.
+  // Marking it done also approves it; undoing done leaves it approved.
+  if (req.body.completed !== undefined) {
+    updates.completed_at = req.body.completed ? new Date().toISOString() : null
+    if (req.body.completed) updates.status = 'confirmed'
+  }
+
+  // Approve (or un-approve) a single extraction
+  if (req.body.status !== undefined && !req.body.completed) {
+    if (!['pending_review', 'confirmed'].includes(req.body.status)) {
+      return res.status(400).json({ error: 'Invalid status' })
+    }
+    updates.status = req.body.status
+  }
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No valid fields to update' })
@@ -271,6 +425,11 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     .single()
 
   if (error) {
+    if (/completed_at/.test(error.message)) {
+      return res.status(500).json({
+        error: 'Marking obligations as done needs a database update: run migrations/005_obligation_completed.sql.',
+      })
+    }
     return res.status(500).json({ error: error.message })
   }
 
@@ -350,6 +509,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
 
   const buffer = Buffer.from(await fileData.arrayBuffer())
   let extractedText = ''
+  let pageTexts = []
   let extractionStatus = 'failed'
   let pages = null
   let characters = null
@@ -357,6 +517,7 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
   try {
     const parsed = await extractPdfText(buffer)
     extractedText = parsed.text
+    pageTexts = parsed.pageTexts
     pages = parsed.numPages
     characters = parsed.text.length
     const trimmedText = extractedText.replace(/\s+/g, '').trim()
@@ -369,52 +530,17 @@ router.post('/grants/:id/retry', requireAuth, async (req, res) => {
     return res.status(500).json({ error: `PDF parsing failed: ${parseError.message}` })
   }
 
-  await supabaseAdmin
-    .from('documents')
-    .update({ extraction_status: extractionStatus })
-    .eq('id', doc.id)
-
-  let obligations = []
-  let obligationError = null
-
-  if (extractionStatus === 'extracted' && extractedText.length > 0) {
-    console.log(`[retry] Sending ${extractedText.length} chars to LLM for grant "${grantId}"`)
-    try {
-      obligations = await extractObligations(extractedText)
-      console.log(`[retry] LLM returned ${obligations.length} obligations`)
-    } catch (llmError) {
-      console.error('[retry] LLM extraction failed:', llmError.message)
-      obligationError = llmError.message
-    }
-
-    if (obligations.length > 0) {
-      const obligationRows = obligations.map((o) => ({
-        grant_id: grant.id,
-        type: o.type,
-        description: o.description,
-        due_date: o.due_date || null,
-        source_page: o.source_page,
-        source_excerpt: o.source_excerpt,
-        confidence: o.confidence,
-        status: 'pending_review',
-      }))
-
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from('obligations')
-        .insert(obligationRows)
-        .select()
-
-      if (insertError) {
-        console.error('[retry] Failed to insert obligations:', insertError.message)
-        obligationError = `Obligations extracted but save failed: ${insertError.message}`
-      } else if (inserted) {
-        obligations = inserted
-      }
-    }
-  }
+  const { obligations, obligationError, truncated, grantNumber } = await runObligationExtraction({
+    grantId: grant.id,
+    documentId: doc.id,
+    pageTexts,
+    pages,
+    label: 'retry',
+    replaceExisting: true,
+  })
 
   res.json({
-    extraction: { status: extractionStatus, pages, characters },
+    extraction: { status: extractionStatus, pages, characters, truncated, grant_number: grantNumber },
     obligations,
     obligationError,
   })

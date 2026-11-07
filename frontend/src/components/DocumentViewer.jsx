@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import API_URL from '../lib/api'
+import { apiFetch, readJson } from '../lib/api'
 
 export default function DocumentViewer({ grantId, grantName, onClose }) {
   const [objectUrl, setObjectUrl] = useState(null)
@@ -17,12 +17,12 @@ export default function DocumentViewer({ grantId, grantName, onClose }) {
         const token = authData.session?.access_token
         if (!token) throw new Error('Not authenticated')
 
-        const res = await fetch(`${API_URL}/api/grants/${grantId}/document`, {
+        const res = await apiFetch(`/api/grants/${grantId}/document`, {
           headers: { Authorization: `Bearer ${token}` },
         })
 
         if (!res.ok) {
-          const payload = await res.json().catch(() => ({}))
+          const payload = await readJson(res)
           throw new Error(payload.error || `Failed to load document (${res.status})`)
         }
 

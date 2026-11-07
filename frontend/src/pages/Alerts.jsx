@@ -3,15 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import AppShell from '../components/AppShell'
+import { daysUntil, grantReference, isFlagged, isOverdue, todayISO } from '../lib/grantStatus'
 
 const PAGE_SIZE = 10
-
-function shortId(id) {
-  return String(id || '')
-    .replace(/-/g, '')
-    .slice(0, 7)
-    .toUpperCase()
-}
 
 const TYPE_LABELS = {
   deadline: 'Deadline',
@@ -21,12 +15,14 @@ const TYPE_LABELS = {
 }
 
 const STATUS_META = {
+  overdue: { label: 'Overdue', icon: 'schedule', color: 'text-alert-crimson', fill: false },
   flagged: { label: 'Flagged', icon: 'flag', color: 'text-alert-crimson', fill: true },
-  'needs review': { label: 'Needs Review', icon: 'radio_button_unchecked', color: 'text-warning-ochre', fill: false },
+  'needs review': { label: 'Needs Review', icon: 'radio_button_unchecked', color: 'text-warning-text', fill: false },
 }
 
 function rowStatus(obligation) {
-  if (obligation.confidence === 'low' && !obligation.verified) return 'flagged'
+  if (obligation.overdue) return 'overdue'
+  if (isFlagged(obligation)) return 'flagged'
   return 'needs review'
 }
 
@@ -44,7 +40,7 @@ export default function Alerts() {
 
     const { data: grantsData } = await supabase
       .from('grants')
-      .select('id, name, funder_name')
+      .select('*')
       .eq('user_id', user.id)
 
     const grantList = grantsData || []
@@ -58,25 +54,26 @@ export default function Alerts() {
       allObligations = obligationsData || []
     }
 
+    // Overdue = past due and not marked done, even if already confirmed
+    const today = todayISO()
     const alertRows = allObligations
-      .filter(
-        (o) =>
-          (o.confidence === 'low' && !o.verified) || o.status === 'pending_review',
-      )
+      .map((o) => ({ ...o, overdue: isOverdue(o, today) }))
+      .filter((o) => o.overdue || isFlagged(o) || o.status === 'pending_review')
       .map((o) => {
         const grant = grantList.find((g) => g.id === o.grant_id)
         return {
           ...o,
           grantName: grant?.name || 'Unknown grant',
           funderName: grant?.funder_name || '',
-          grantShort: shortId(grant?.id || o.grant_id),
+          grantRef: grantReference(grant || { id: o.grant_id }),
         }
       })
       .sort((a, b) => {
-        const rank = { flagged: 0, 'needs review': 1 }
+        const rank = { overdue: 0, flagged: 1, 'needs review': 2 }
         const ar = rank[rowStatus(a)]
         const br = rank[rowStatus(b)]
         if (ar !== br) return ar - br
+        if (a.overdue) return a.due_date.localeCompare(b.due_date)
         return new Date(a.created_at) - new Date(b.created_at)
       })
 
@@ -97,12 +94,14 @@ export default function Alerts() {
   }, [user, loadData])
 
   const counts = useMemo(() => {
+    const overdue = rows.filter((r) => rowStatus(r) === 'overdue').length
     const flagged = rows.filter((r) => rowStatus(r) === 'flagged').length
-    const needsReview = rows.length - flagged
-    return { all: rows.length, flagged, needsReview }
+    const needsReview = rows.length - overdue - flagged
+    return { all: rows.length, overdue, flagged, needsReview }
   }, [rows])
 
   const visible = useMemo(() => {
+    if (filter === 'overdue') return rows.filter((r) => rowStatus(r) === 'overdue')
     if (filter === 'flagged') return rows.filter((r) => rowStatus(r) === 'flagged')
     if (filter === 'needs review') return rows.filter((r) => rowStatus(r) === 'needs review')
     return rows
@@ -141,12 +140,19 @@ export default function Alerts() {
               Critical Compliance Alerts
             </h2>
             <p className="text-body-md text-body-md text-secondary max-w-2xl">
-              Portfolio-wide obligations requiring immediate review or intervention. Data is
-              extracted directly from source agreements.
+              Obligations across all your grants that still need a review. Each one is taken
+              straight from the grant agreement it came from.
             </p>
           </div>
           <div className="flex items-center gap-2 font-label-caps text-label-caps uppercase flex-wrap">
             {pill('all', 'All', counts.all, filter === 'all', 'border-outline text-primary')}
+            {pill(
+              'overdue',
+              'Overdue',
+              counts.overdue,
+              filter === 'overdue',
+              'border-alert-crimson bg-error-container/20 text-alert-crimson font-bold',
+            )}
             {pill(
               'flagged',
               'Flagged',
@@ -159,7 +165,7 @@ export default function Alerts() {
               'Needs Review',
               counts.needsReview,
               filter === 'needs review',
-              'border-warning-ochre bg-warning-ochre/10 text-warning-ochre font-bold',
+              'border-warning-ochre bg-warning-ochre/10 text-warning-text font-bold',
             )}
           </div>
         </header>
@@ -177,7 +183,7 @@ export default function Alerts() {
             </h2>
             <p className="text-body-md text-on-surface-variant max-w-md">
               {filter === 'all'
-                ? 'Every extracted obligation has been reviewed and confirmed. Nothing needs attention right now.'
+                ? 'Every obligation has been reviewed and nothing is overdue. Nothing needs attention right now.'
                 : `No ${filter} obligations in your portfolio right now.`}
             </p>
           </div>
@@ -197,7 +203,9 @@ export default function Alerts() {
                   const meta = STATUS_META[status]
                   const typeLabel = TYPE_LABELS[o.type] || 'Obligation'
                   const due = o.due_date
-                    ? ` · Due ${o.due_date}`
+                    ? o.overdue
+                      ? ` · Was due ${o.due_date} (${-daysUntil(o.due_date)} days ago)`
+                      : ` · Due ${o.due_date}`
                     : ''
                   return (
                     <div
@@ -207,7 +215,7 @@ export default function Alerts() {
                       <div className="col-span-3 flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <span className="font-source-code text-source-code text-secondary px-1.5 py-0.5 bg-surface-variant rounded-sm border border-outline-variant/50">
-                            G-{o.grantShort} · {typeLabel}
+                            <span className="whitespace-nowrap">{o.grantRef}</span> · {typeLabel}
                           </span>
                         </div>
                         <span className="text-body-md text-body-md font-semibold text-on-surface">

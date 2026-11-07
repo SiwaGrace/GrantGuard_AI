@@ -82,8 +82,7 @@ export default function Settings() {
         <header className="inkwell-border-b pb-6 shrink-0">
           <h2 className="font-headline-lg text-headline-lg text-on-surface mb-2">Settings</h2>
           <p className="text-body-md text-body-md text-secondary max-w-2xl">
-            Manage organizational preferences, user roles, and compliance integrations. Changes are
-            logged to the central audit trail.
+            Your organisation&apos;s profile. Settings are saved in this browser.
           </p>
         </header>
 
@@ -99,7 +98,7 @@ export default function Settings() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
               <div className="md:col-span-4 flex flex-col items-center md:items-start border-b md:border-b-0 md:border-r border-outline-variant pb-6 md:pb-0 md:pr-8">
                 <span className="font-label-caps text-label-caps text-secondary mb-4 uppercase">
-                  Entity Mark
+                  Logo
                 </span>
                 <label className="w-32 h-32 rounded-full border-2 border-dashed border-outline-variant flex flex-col items-center justify-center bg-surface-container hover:bg-surface-container-high transition-colors cursor-pointer relative overflow-hidden group mb-4">
                   {form.logoDataUrl ? (
@@ -197,8 +196,7 @@ export default function Settings() {
               Signed in as {user?.email}
             </h4>
             <p className="text-body-sm text-body-sm text-secondary">
-              Profile and settings changes are attributed to your account and recorded in the
-              central audit trail.
+              Settings are saved in this browser only, so they won&apos;t appear on other devices.
             </p>
           </div>
         </section>

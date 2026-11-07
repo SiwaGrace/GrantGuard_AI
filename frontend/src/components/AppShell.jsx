@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import UploadModal from './UploadModal'
 import ChatWidget from './ChatWidget'
@@ -31,6 +31,7 @@ function NavItem({ to, icon, label, onClick }) {
 export default function AppShell({ children }) {
   const { signOut } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -61,18 +62,22 @@ export default function AppShell({ children }) {
     setUploadOpen(true)
   }
 
+  // The dashboard has its own Upload button in the header and empty state
+  const onDashboard = pathname === '/'
+
   const nav = (
     <>
-      <button
-        onClick={handleUploadGrant}
-        className="mb-8 w-full bg-primary text-on-primary py-2 px-4 notched-card hover:bg-surface-tint transition-colors flex items-center justify-center gap-2 font-label-caps text-label-caps uppercase tracking-widest"
-      >
-        <span className="material-symbols-outlined filled-icon">upload</span>
-        Upload Grant
-      </button>
+      {!onDashboard && (
+        <button
+          onClick={handleUploadGrant}
+          className="mb-8 w-full bg-primary text-on-primary py-2 px-4 notched-card hover:bg-surface-tint transition-colors flex items-center justify-center gap-2 font-label-caps text-label-caps uppercase tracking-widest"
+        >
+          <span className="material-symbols-outlined filled-icon">upload</span>
+          Upload Grant
+        </button>
+      )}
 
       <nav className="flex-1 space-y-2">
-        <NavItem to="/portfolio" icon="folder_shared" label="Portfolio" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/" icon="dashboard" label="Dashboard" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/alerts" icon="notification_important" label="Alerts" onClick={() => setDrawerOpen(false)} />
         <NavItem to="/settings" icon="settings" label="Settings" onClick={() => setDrawerOpen(false)} />
