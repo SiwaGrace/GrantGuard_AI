@@ -437,13 +437,6 @@ export default function ReviewScreen() {
                 {confirming ? 'APPROVING…' : `APPROVE ALL (${pendingCount})`}
               </button>
             )}
-            <button
-              onClick={() => navigate('/')}
-              className="py-3 px-4 border border-outline text-primary font-label-caps text-label-caps tracking-wider uppercase hover:bg-surface-container transition-colors notched-br flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Dashboard
-            </button>
           </div>
         </header>
 
