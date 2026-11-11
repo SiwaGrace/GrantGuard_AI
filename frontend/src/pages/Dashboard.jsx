@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { apiFetch, readJson } from '../lib/api'
 import AppShell from '../components/AppShell'
 import DocumentViewer from '../components/DocumentViewer'
+import { buildAlertBuckets } from '../lib/alertModel'
 import { buildCalendarEvents, toIcs, downloadIcs } from '../lib/ics'
 import {
   DUE_SOON_DAYS,
@@ -152,6 +153,7 @@ export default function Dashboard() {
       .from('grants')
       .select('*')
       .eq('user_id', user.id)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
 
     const grantList = grantsData || []
@@ -177,33 +179,21 @@ export default function Dashboard() {
     }
 
     const today = todayISO()
-    const overdueItems = allObligations.filter((o) => isOverdue(o, today))
-    const dueSoonItems = allObligations.filter((o) => isDueSoon(o, today))
-
-    const lowConf = allObligations.filter(isFlagged).length
-
-    const flagItems = allObligations
-      .filter(isFlagged)
-      .map((o) => {
-        const grant = grantList.find((g) => g.id === o.grant_id)
-        return { ...o, grantName: grant?.name || 'Unknown grant' }
-      })
+    const grantsById = Object.fromEntries(grantList.map((g) => [g.id, g]))
+    const buckets = buildAlertBuckets(allObligations, { today, grantsById })
 
     setPortfolioObligations(allObligations)
     setStats({
       total: grantList.length,
       obligations: allObligations.length,
-      overdue: overdueItems.length,
-      dueSoon: dueSoonItems.length,
-      lowConf,
+      overdue: buckets.overdue.length,
+      dueSoon: buckets.dueSoon.length,
+      lowConf: buckets.flagged.length,
     })
 
     // Overdue first (most overdue at the top), then due soon
-    const dueSoonList = [...overdueItems, ...dueSoonItems]
-      .map((o) => {
-        const grant = grantList.find((g) => g.id === o.grant_id)
-        return { ...o, grantName: grant?.name || 'Unknown grant', daysLeft: daysUntil(o.due_date, today) }
-      })
+    const dueSoonList = [...buckets.overdue, ...buckets.dueSoon]
+      .map((o) => ({ ...o, daysLeft: daysUntil(o.due_date, today) }))
       .sort((a, b) => a.daysLeft - b.daysLeft)
 
     const enriched = grantList.map((g) => {
@@ -236,7 +226,7 @@ export default function Dashboard() {
 
     setGrants(enriched)
     setDueSoonList(dueSoonList)
-    setFlagList(flagItems)
+    setFlagList(buckets.flagged)
   }, [user])
 
   useEffect(() => {

@@ -25,9 +25,17 @@ export function isFlagged(obligation) {
 
 export const DUE_SOON_DAYS = 14
 
-// Today's date in the user's timezone as YYYY-MM-DD, to compare with due_date
+// Today's date in the project's timezone (Africa/Accra) as YYYY-MM-DD, to
+// compare with due_date. Ghana is on GMT, so this stays stable for the demo.
 export function todayISO() {
-  return new Date().toLocaleDateString('en-CA')
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Accra',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const part = (type) => parts.find((item) => item.type === type)?.value
+  return `${part('year')}-${part('month')}-${part('day')}`
 }
 
 function addDaysISO(isoDate, days) {

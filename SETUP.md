@@ -30,6 +30,7 @@ Open **SQL Editor → New query** in Supabase. For each file below, paste its en
 | 4 | [`migrations/004_add_grant_share.sql`](migrations/004_add_grant_share.sql) | Adds `share_token` and the `anon_grant_summary()` function used by the funder share link (safe to re-run) |
 | 5 | [`migrations/005_obligation_completed.sql`](migrations/005_obligation_completed.sql) | Adds `completed_at` so obligations can be marked as done; past-due obligations that aren't done show as overdue (safe to re-run) |
 | 6 | [`migrations/006_grant_number.sql`](migrations/006_grant_number.sql) | Adds `grant_number`, the agreement's own reference number (e.g. GD-2026-WASH-0417) found at upload (safe to re-run) |
+| 7 | [`migrations/007_alert_actions.sql`](migrations/007_alert_actions.sql) | Adds `snoozed_until` and `flag_verified_at` so alerts can be snoozed and flags verified from the Alerts page (safe to re-run) |
 
 > `001_init_schema.sql` is **not** safe to run twice. It fails with "relation already exists". If that happens, the tables are already there and you can move on to file 2.
 
@@ -128,6 +129,7 @@ Then:
 | "PDF contains too little extractable text" | The PDF is a scanned image. Use a text-based PDF |
 | Upload says "AI extraction failed" | Check `GROQ_API_KEY`. A `429` means Groq's free-tier rate limit; wait a minute and click **Retry** on the dashboard |
 | Share link page says "This link could not be loaded" | Migration 4 (`004_add_grant_share.sql`) hasn't been run |
+| Alerts page says alert actions need a database update | Migration 7 (`007_alert_actions.sql`) hasn't been run |
 | Login says "Email not confirmed" | Email confirmation is still on. See step 4 |
 
 ## Optional: share-link security test

@@ -22,7 +22,7 @@ A single grant agreement can run to dozens of pages, and the obligations are sca
 - **Source quotes for every obligation.** Each extracted item shows the verbatim clause and page number, so you can verify it against the agreement instead of trusting the AI blindly. The original PDF opens alongside it.
 - **Confidence flags.** Ambiguous or implied obligations are marked low-confidence and stay flagged until someone reviews them.
 - **Portfolio dashboard.** Active grants, obligations due in the next 14 days, flagged clauses, and the health of every grant at a glance.
-- **Alerts.** One list of everything across the portfolio that still needs review, filterable by flagged / needs review.
+- **Alerts.** A live view of overdue, due-soon and flagged obligations across the portfolio. Each alert links back to its source clause, and you can mark it done (with undo), snooze it, or verify a flag without leaving the page.
 - **Calendar export.** Download dated obligations as an `.ics` file for Google Calendar, Outlook or Apple Calendar, per grant or for the whole portfolio.
 - **Ask GrantGuard.** A chat assistant that answers questions about your portfolio ("Which reports are due this week?", "Which obligations are overdue?") using only your own data.
 - **Funder share link.** Generate a read-only link that shows a funder the confirmed obligations for one grant. No account needed, no access to the full agreement, and you can revoke it at any time.

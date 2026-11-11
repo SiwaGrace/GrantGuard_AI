@@ -385,7 +385,7 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     return res.status(404).json({ error: 'Grant not found' })
   }
 
-  const allowed = ['description', 'due_date', 'type', 'verified']
+  const allowed = ['description', 'due_date', 'type', 'verified', 'snoozed_until']
   const updates = {}
   for (const key of allowed) {
     if (req.body[key] !== undefined) {
@@ -398,6 +398,20 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
   if (req.body.completed !== undefined) {
     updates.completed_at = req.body.completed ? new Date().toISOString() : null
     if (req.body.completed) updates.status = 'confirmed'
+  }
+
+  // Verifying a flagged clause records both the boolean the app reads and
+  // the time it was checked.
+  if (req.body.verified !== undefined) {
+    updates.verified = Boolean(req.body.verified)
+    updates.flag_verified_at = req.body.verified ? new Date().toISOString() : null
+  }
+
+  // Snooze can clear itself (null) or be a future timestamp
+  if (updates.snoozed_until !== undefined && updates.snoozed_until !== null) {
+    if (Number.isNaN(Date.parse(updates.snoozed_until))) {
+      return res.status(400).json({ error: 'Invalid snooze time' })
+    }
   }
 
   // Approve (or un-approve) a single extraction
@@ -416,7 +430,7 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     return res.status(400).json({ error: 'Invalid obligation type' })
   }
 
-  const { data: updated, error } = await supabaseAdmin
+  let result = await supabaseAdmin
     .from('obligations')
     .update(updates)
     .eq('id', obligationId)
@@ -424,10 +438,31 @@ router.patch('/grants/:id/obligations/:obligationId', requireAuth, async (req, r
     .select()
     .single()
 
+  // A database that has not run migration 007 can still verify a flag using
+  // the original `verified` boolean.
+  if (result.error && 'flag_verified_at' in updates && /flag_verified_at/.test(result.error.message)) {
+    const fallback = { ...updates }
+    delete fallback.flag_verified_at
+    result = await supabaseAdmin
+      .from('obligations')
+      .update(fallback)
+      .eq('id', obligationId)
+      .eq('grant_id', grantId)
+      .select()
+      .single()
+  }
+
+  const { data: updated, error } = result
+
   if (error) {
     if (/completed_at/.test(error.message)) {
       return res.status(500).json({
         error: 'Marking obligations as done needs a database update: run migrations/005_obligation_completed.sql.',
+      })
+    }
+    if (/snoozed_until|flag_verified_at/.test(error.message)) {
+      return res.status(500).json({
+        error: 'Alert actions need a database update: run migrations/007_alert_actions.sql.',
       })
     }
     return res.status(500).json({ error: error.message })
